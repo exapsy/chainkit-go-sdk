@@ -390,9 +390,22 @@ func (t CoinTicker) String() string {
 }
 
 func (t CoinTicker) MarshalJSON() ([]byte, error) {
-	str := fmt.Sprintf(`"%s"`, t.String())
+	return []byte(fmt.Sprintf(`"%s"`, t.String())), nil
+}
 
-	return []byte(str), nil
+// UnmarshalJSON parses a JSON string into a CoinTicker using [CoinTickerFromString].
+// Accepted values: "BTC", "Bitcoin", "COIN_TICKER_BTC", "" or "COIN_TICKER_UNSPECIFIED".
+func (t *CoinTicker) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	parsed, err := CoinTickerFromString(s)
+	if err != nil {
+		return err
+	}
+	*t = parsed
+	return nil
 }
 
 func (t CoinTicker) BlockchainString() string {

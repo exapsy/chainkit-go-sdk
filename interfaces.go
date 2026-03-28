@@ -12,23 +12,15 @@
 //	    "github.com/exapsy/chainkit/bitcoin/types"
 //	)
 //
-//	metal := providers.NewMetal(providers.MetalProviderOptions{
-//	    Network: types.BitcoinNetworkMainnet,
-//	})
-//	mempool, err := providers.NewMempool(providers.MempoolOptions{
-//	    Network: types.BitcoinNetworkMainnet,
-//	    BaseURL: "https://mempool.space/api",
-//	})
-//	if err != nil {
-//	    return err
-//	}
+//	metal := providers.NewMetal(types.BitcoinNetworkMainnet)
+//	mempool := providers.NewMempool(types.BitcoinNetworkMainnet, "https://mempool.space/api")
 //
 //	client, err := chainkit.NewMixedProvidersBuilder().
-//	    WithAddressGenerator(metal).
-//	    WithTxAssembler(metal).
-//	    WithTxSigner(metal).
-//	    WithTxSizer(metal).
-//	    WithFeeEstimator(metal).
+//	    WithAddressGeneratorChain(chainkit.AddressGeneratorConfig{Generator: metal, Priority: 1}).
+//	    WithTxAssemblerChain(chainkit.TxAssemblerConfig{Assembler: metal, Priority: 1}).
+//	    WithTxSignerChain(chainkit.TxSignerConfig{Signer: metal, Priority: 1}).
+//	    WithTxSizerChain(chainkit.TxSizerConfig{Sizer: metal, Priority: 1}).
+//	    WithFeeEstimatorChain(chainkit.FeeEstimatorConfig{Estimator: metal, Priority: 1}).
 //	    WithFeeRecommenderChain(chainkit.FeeRecommenderConfig{Recommender: mempool, Priority: 1}).
 //	    WithBalanceFetcherChain(chainkit.BalanceFetcherConfig{Fetcher: mempool, Priority: 1}).
 //	    WithUTXOFetcherChain(chainkit.UTXOFetcherConfig{Fetcher: mempool, Priority: 1}).
