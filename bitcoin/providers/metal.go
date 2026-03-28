@@ -35,7 +35,7 @@ type MetalProvider interface {
 // - TxSizer (for size calculation)
 //
 // It intentionally does NOT implement:
-// - FeeFetcher (requires network API)
+// - FeeRecommender (requires network API)
 // - UTXOFetcher (requires network API)
 // - TxBroadcaster (requires network API)
 // - TxStatusFetcher (requires network API)

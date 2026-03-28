@@ -8,7 +8,7 @@ const (
 	ProviderChainAddressGenerators ProviderChainType = "AddressGenerators"
 	ProviderChainAddressValidators ProviderChainType = "AddressValidators"
 	ProviderChainFeeEstimators     ProviderChainType = "FeeEstimators"   // FeeEstimator interface - calculates fee amounts
-	ProviderChainFeeRecommenders   ProviderChainType = "FeeRecommenders" // FeeFetcher interface - fetches fee recommendations
+	ProviderChainFeeRecommenders   ProviderChainType = "FeeRecommenders" // FeeRecommender interface - fetches fee recommendations
 	ProviderChainTxBroadcasters    ProviderChainType = "TxBroadcasters"
 	ProviderChainUTXOFetchers      ProviderChainType = "UTXOFetchers"
 	ProviderChainTxAssemblers      ProviderChainType = "TxAssemblers"

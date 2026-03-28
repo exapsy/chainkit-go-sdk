@@ -1,8 +1,6 @@
 // Package chainkit provides blockchain interaction capabilities
 package chainkit
 
-import "fmt"
-
 // MixedProvidersBuilder implements the builder pattern for creating MixedProviders
 type MixedProvidersBuilder struct {
 	addressGenerators *ProviderManager
@@ -94,7 +92,7 @@ func (b *MixedProvidersBuilder) AddAddressGenerator(generator AddressGenerator, 
 	return b
 }
 
-func (b *MixedProvidersBuilder) AddFeeRecommender(recommender FeeFetcher, priority int, name string) *MixedProvidersBuilder {
+func (b *MixedProvidersBuilder) AddFeeRecommender(recommender FeeRecommender, priority int, name string) *MixedProvidersBuilder {
 	b.feeRecommenders.AddProvider(recommender, priority, name)
 	return b
 }
@@ -225,29 +223,37 @@ func (b *MixedProvidersBuilder) WithAddressGeneratorChain(generators ...AddressG
 	return b
 }
 
-func (b *MixedProvidersBuilder) WithFeeFetcherChain(fetchers ...FeeFetcherConfig) *MixedProvidersBuilder {
-	for _, fetcher := range fetchers {
-		// Skip nil fetchers to prevent panics
-		if fetcher.Fetcher == nil {
+// WithFeeRecommenderChain adds one or more [FeeRecommender] providers with per-entry
+// priority and optional chain configuration.
+func (b *MixedProvidersBuilder) WithFeeRecommenderChain(recommenders ...FeeRecommenderConfig) *MixedProvidersBuilder {
+	for _, r := range recommenders {
+		if r.Recommender == nil {
 			continue
 		}
 
-		name := fetcher.Name
+		name := r.Name
 		if name == "" {
-			if named, ok := fetcher.Fetcher.(BlockchainBaseProvider); ok {
+			if named, ok := r.Recommender.(BlockchainBaseProvider); ok {
 				name = named.Name()
 			} else {
 				name = "unknown"
 			}
 		}
 
-		if fetcher.ChainConfig != nil {
-			b.feeRecommenders.UpdateChainConfig(*fetcher.ChainConfig)
+		if r.ChainConfig != nil {
+			b.feeRecommenders.UpdateChainConfig(*r.ChainConfig)
 		}
 
-		b.feeRecommenders.AddProvider(fetcher.Fetcher, fetcher.Priority, name)
+		b.feeRecommenders.AddProvider(r.Recommender, r.Priority, name)
 	}
 	return b
+}
+
+// WithFeeFetcherChain is an alias for [WithFeeRecommenderChain] using the old config type.
+//
+// Deprecated: use [WithFeeRecommenderChain] with [FeeRecommenderConfig] instead.
+func (b *MixedProvidersBuilder) WithFeeFetcherChain(fetchers ...FeeRecommenderConfig) *MixedProvidersBuilder {
+	return b.WithFeeRecommenderChain(fetchers...)
 }
 
 func (b *MixedProvidersBuilder) WithFeeEstimatorChain(estimators ...FeeEstimatorConfig) *MixedProvidersBuilder {
@@ -425,83 +431,107 @@ func (b *MixedProvidersBuilder) WithAddressValidatorChain(validators ...AddressV
 	return b
 }
 
-// WithAddressGenerator is a Legacy single-provider methods for backward compatibility
+// WithAddressGenerator registers a single [AddressGenerator] at priority 1.
+//
+// Deprecated: use [WithAddressGeneratorChain] with [AddressGeneratorConfig] for explicit
+// priority control and per-provider chain configuration.
 func (b *MixedProvidersBuilder) WithAddressGenerator(generator AddressGenerator) *MixedProvidersBuilder {
 	return b.AddAddressGenerator(generator, 1, "default")
 }
 
-func (b *MixedProvidersBuilder) WithFeeRecommender(recommender FeeFetcher) *MixedProvidersBuilder {
+// WithFeeRecommender registers a single [FeeRecommender] at priority 1.
+//
+// Deprecated: use [WithFeeRecommenderChain] with [FeeRecommenderConfig] for explicit
+// priority control and per-provider chain configuration.
+func (b *MixedProvidersBuilder) WithFeeRecommender(recommender FeeRecommender) *MixedProvidersBuilder {
 	return b.AddFeeRecommender(recommender, 1, "default")
 }
 
+// WithFeeEstimator registers a single [FeeEstimator] at priority 1.
+//
+// Deprecated: use [WithFeeEstimatorChain] with [FeeEstimatorConfig] for explicit
+// priority control and per-provider chain configuration.
 func (b *MixedProvidersBuilder) WithFeeEstimator(estimator FeeEstimator) *MixedProvidersBuilder {
 	return b.AddFeeEstimator(estimator, 1, "default")
 }
 
+// WithTxBroadcaster registers a single [TxBroadcaster] at priority 1.
+//
+// Deprecated: use [WithTxBroadcasterChain] with [TxBroadcasterConfig] for explicit
+// priority control and per-provider chain configuration.
 func (b *MixedProvidersBuilder) WithTxBroadcaster(broadcaster TxBroadcaster) *MixedProvidersBuilder {
 	return b.AddTxBroadcaster(broadcaster, 1, "default")
 }
 
+// WithTxAssembler registers a single [TxAssembler] at priority 1.
+//
+// Deprecated: use [WithTxAssemblerChain] with [TxAssemblerConfig] for explicit
+// priority control and per-provider chain configuration.
 func (b *MixedProvidersBuilder) WithTxAssembler(assembler TxAssembler) *MixedProvidersBuilder {
 	return b.AddTxAssembler(assembler, 1, "default")
 }
 
+// WithTxSizer registers a single [TxSizer] at priority 1.
+//
+// Deprecated: use [WithTxSizerChain] with [TxSizerConfig] for explicit
+// priority control and per-provider chain configuration.
 func (b *MixedProvidersBuilder) WithTxSizer(sizer TxSizer) *MixedProvidersBuilder {
 	return b.AddTxSizer(sizer, 1, "default")
 }
 
+// WithTxSigner registers a single [TxSigner] at priority 1.
+//
+// Deprecated: use [WithTxSignerChain] with [TxSignerConfig] for explicit
+// priority control and per-provider chain configuration.
 func (b *MixedProvidersBuilder) WithTxSigner(signer TxSigner) *MixedProvidersBuilder {
 	return b.AddTxSigner(signer, 1, "default")
 }
 
+// WithUTXOFetcher registers a single [UTXOFetcher] at priority 1.
+//
+// Deprecated: use [WithUTXOFetcherChain] with [UTXOFetcherConfig] for explicit
+// priority control and per-provider chain configuration.
 func (b *MixedProvidersBuilder) WithUTXOFetcher(fetcher UTXOFetcher) *MixedProvidersBuilder {
 	return b.AddUTXOFetcher(fetcher, 1, "default")
 }
 
+// WithBalanceFetcher registers a single [BalanceFetcher] at priority 1.
+//
+// Deprecated: use [WithBalanceFetcherChain] with [BalanceFetcherConfig] for explicit
+// priority control and per-provider chain configuration.
 func (b *MixedProvidersBuilder) WithBalanceFetcher(fetcher BalanceFetcher) *MixedProvidersBuilder {
 	return b.AddBalanceFetcher(fetcher, 1, "default")
 }
 
+// WithRateFetcher registers a single [RateFetcher] at priority 1.
+//
+// Deprecated: use [WithRateFetcherChain] with [RateFetcherConfig] for explicit
+// priority control and per-provider chain configuration.
 func (b *MixedProvidersBuilder) WithRateFetcher(fetcher RateFetcher) *MixedProvidersBuilder {
 	return b.AddRateFetcher(fetcher, 1, "default")
 }
 
+// WithAddressValidator registers a single [AddressValidator] at priority 1.
+//
+// Deprecated: use [WithAddressValidatorChain] with [AddressValidatorConfig] for explicit
+// priority control and per-provider chain configuration.
 func (b *MixedProvidersBuilder) WithAddressValidator(validator AddressValidator) *MixedProvidersBuilder {
 	return b.AddAddressValidator(validator, 1, "default")
 }
 
+// WithTxStatusFetcher registers a single [TxStatusFetcher] at priority 1.
+//
+// Deprecated: use a chain-registration method when multi-provider status checking is needed.
 func (b *MixedProvidersBuilder) WithTxStatusFetcher(fetcher TxStatusFetcher) *MixedProvidersBuilder {
 	return b.AddTxStatusFetcher(fetcher, 1, "default")
 }
 
-// Build creates the final MixedProviders instance.
-// Returns an error if any required provider interface has no registered provider.
+// Build creates the final [MixedProviders] instance.
+//
+// Not all roles need to be registered. If you call a method whose role has no
+// registered provider you will receive an [ErrProviderNotConfigured] error at
+// that point — no upfront validation is performed.
 func (b *MixedProvidersBuilder) Build() (BlockchainProvider, error) {
-	// Check that at least one provider exists for each required interface
-	managers := map[string]*ProviderManager{
-		ProviderTypeAddressGenerator.String(): b.addressGenerators,
-		ProviderTypeFeeRecommender.String():   b.feeRecommenders,
-		ProviderTypeFeeEstimator.String():     b.feeEstimators,
-		ProviderTypeTxBroadcaster.String():    b.txBroadcasters,
-		ProviderTypeUTXOFetcher.String():      b.utxoFetchers,
-		ProviderTypeTxAssembler.String():      b.txAssemblers,
-		ProviderTypeTxSizer.String():          b.txSizers,
-		ProviderTypeTxSigner.String():         b.txSigners,
-		ProviderTypeBalanceFetcher.String():   b.balanceFetchers,
-		ProviderTypeRateFetcher.String():      b.rateFetchers,
-	}
-
-	var missingInterfaces []string
-	for name, manager := range managers {
-		if len(manager.providers) == 0 {
-			missingInterfaces = append(missingInterfaces, name)
-		}
-	}
-
-	if len(missingInterfaces) > 0 {
-		return nil, fmt.Errorf("missing required provider interfaces: %v", missingInterfaces)
-	}
-
 	return &MixedProviders{
 		addressGenerators: b.addressGenerators,
 		addressValidators: b.addressValidators,

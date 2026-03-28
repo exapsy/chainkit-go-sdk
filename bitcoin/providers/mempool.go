@@ -22,7 +22,7 @@ type MempoolProvider interface {
 	// Name returns the name of the provider.
 	Name() string
 	chainkit.RateFetcher
-	chainkit.FeeFetcher
+	chainkit.FeeRecommender
 	chainkit.TxBroadcaster
 	chainkit.BalanceFetcher
 	chainkit.HealthChecker
@@ -459,7 +459,7 @@ func (m *mempoolProvider) CheckHealth(ctx context.Context) chainkit.HealthStatus
 func (m *mempoolProvider) GetCapabilities() []chainkit.ProviderCapability {
 	return []chainkit.ProviderCapability{
 		chainkit.CapabilityBalanceFetching,
-		chainkit.CapabilityFeeFetching,
+		chainkit.CapabilityFeeRecommending,
 		chainkit.CapabilityRateFetching,
 		chainkit.CapabilityTxBroadcast,
 		chainkit.CapabilityTxStatusFetching,
@@ -467,8 +467,8 @@ func (m *mempoolProvider) GetCapabilities() []chainkit.ProviderCapability {
 	}
 }
 
-// FetchUTXOs fetches unspent transaction outputs for a given address
-func (m *mempoolProvider) FetchUTXOs(ctx context.Context, address string) ([]types.UTXO, error) {
+// GetUTXOs fetches unspent transaction outputs for a given address
+func (m *mempoolProvider) GetUTXOs(ctx context.Context, address string) ([]types.UTXO, error) {
 	ctx = chainkit.WithProviderName(ctx, m.Name())
 
 	url := fmt.Sprintf("%s/address/%s/utxo", m.baseURL, address)

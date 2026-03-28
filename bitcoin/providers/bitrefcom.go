@@ -23,7 +23,7 @@ const (
 type BitrefcomProvider interface {
 	chainkit.BlockchainBaseProvider
 	chainkit.TxBroadcaster
-	chainkit.FeeFetcher
+	chainkit.FeeRecommender
 	chainkit.BalanceFetcher
 }
 
@@ -401,7 +401,7 @@ func (b *Bitrefcom) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 func (b *Bitrefcom) GetCapabilities() []chainkit.ProviderCapability {
 	return []chainkit.ProviderCapability{
 		chainkit.CapabilityBalanceFetching,
-		chainkit.CapabilityFeeFetching,
+		chainkit.CapabilityFeeRecommending,
 		chainkit.CapabilityFeeEstimation,
 		chainkit.CapabilityTxBroadcast,
 	}

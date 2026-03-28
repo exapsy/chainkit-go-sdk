@@ -41,7 +41,7 @@ func executeWithFallbackAndMetrics[ResultT any](
 	providers := manager.GetAvailableProviders()
 
 	if len(providers) == 0 {
-		return zero, fmt.Errorf("no available providers")
+		return zero, fmt.Errorf("%w: no provider registered for %s", ErrProviderNotConfigured, operation)
 	}
 
 	result, providerName, duration, err := manager.RunOp(ctx, func(ctx context.Context, provider interface{}) (interface{}, error) { return fn(provider) })
@@ -67,7 +67,7 @@ func executeWithFallbackAndMetricsWithContext[ResultT any](
 	providers := manager.GetAvailableProviders()
 
 	if len(providers) == 0 {
-		return ctx, zero, fmt.Errorf("no available providers")
+		return ctx, zero, fmt.Errorf("%w: no provider registered for %s", ErrProviderNotConfigured, operation)
 	}
 
 	result, providerName, duration, err := manager.RunOp(ctx, func(ctx context.Context, provider interface{}) (interface{}, error) { return fn(provider) })
@@ -90,9 +90,10 @@ func executeWithFallbackAndMetricsWithContext[ResultT any](
 	return ctx, result.(ResultT), nil
 }
 
-func (m *MixedProviders) SelectProvider(name string) error {
-	// Check if the provider exists in any of the manager lists
-	allManagers := []*ProviderManager{
+// ProviderExists reports whether a provider with the given name is registered
+// in any of the role chains.
+func (m *MixedProviders) ProviderExists(name string) bool {
+	for _, manager := range []*ProviderManager{
 		m.addressGenerators,
 		m.addressValidators,
 		m.txMonitors,
@@ -106,15 +107,12 @@ func (m *MixedProviders) SelectProvider(name string) error {
 		m.txStatusFetchers,
 		m.balanceFetchers,
 		m.rateFetchers,
-	}
-
-	for _, manager := range allManagers {
-		if manager.HasProvider(name) {
-			return nil
+	} {
+		if manager != nil && manager.HasProvider(name) {
+			return true
 		}
 	}
-
-	return fmt.Errorf("provider %s not found in any manager", name)
+	return false
 }
 
 func (m *MixedProviders) DeriveAddress(ctx context.Context, xpub string, index uint32, childIndex uint32) (DerivedAddress, error) {
@@ -125,13 +123,13 @@ func (m *MixedProviders) DeriveAddress(ctx context.Context, xpub string, index u
 
 func (m *MixedProviders) GetTxFees(ctx context.Context) ([]types.FeeTier, error) {
 	return executeWithFallbackAndMetrics(ctx, m.feeRecommenders, m.metricsRecorder, "GetTxFees", func(provider interface{}) ([]types.FeeTier, error) {
-		return provider.(FeeFetcher).GetTxFees(ctx)
+		return provider.(FeeRecommender).GetTxFees(ctx)
 	})
 }
 
 func (m *MixedProviders) GetTxFee(ctx context.Context, feeTier int) (types.FeeTier, error) {
 	return executeWithFallbackAndMetrics(ctx, m.feeRecommenders, m.metricsRecorder, "GetTxFee", func(provider interface{}) (types.FeeTier, error) {
-		return provider.(FeeFetcher).GetTxFee(ctx, feeTier)
+		return provider.(FeeRecommender).GetTxFee(ctx, feeTier)
 	})
 }
 
@@ -165,9 +163,9 @@ func (m *MixedProviders) SignTransaction(ctx context.Context, tx *types.Tx, utxo
 	})
 }
 
-func (m *MixedProviders) FetchUTXOs(ctx context.Context, address string) ([]types.UTXO, error) {
-	return executeWithFallbackAndMetrics(ctx, m.utxoFetchers, m.metricsRecorder, "FetchUTXOs", func(provider interface{}) ([]types.UTXO, error) {
-		return provider.(UTXOFetcher).FetchUTXOs(ctx, address)
+func (m *MixedProviders) GetUTXOs(ctx context.Context, address string) ([]types.UTXO, error) {
+	return executeWithFallbackAndMetrics(ctx, m.utxoFetchers, m.metricsRecorder, "GetUTXOs", func(provider interface{}) ([]types.UTXO, error) {
+		return provider.(UTXOFetcher).GetUTXOs(ctx, address)
 	})
 }
 

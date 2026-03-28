@@ -7,8 +7,8 @@ import (
 	"time"
 )
 
-// SelectionStrategyImpl is an interface for provider selection strategies
-type SelectionStrategyImpl interface {
+// selectionStrategy is an interface for provider selection strategies
+type selectionStrategy interface {
 	// SelectProviders returns an ordered list of providers to try based on the strategy
 	SelectProviders(available []ProviderConfig) []ProviderConfig
 
@@ -22,8 +22,8 @@ type SelectionStrategyImpl interface {
 // priorityOnlySelector implements the priority-only strategy (current behavior)
 type priorityOnlySelector struct{}
 
-// NewPriorityOnlySelector creates a new priority-only selector
-func NewPriorityOnlySelector() SelectionStrategyImpl {
+// newPriorityOnlySelector creates a new priority-only selector
+func newPriorityOnlySelector() selectionStrategy {
 	return &priorityOnlySelector{}
 }
 
@@ -46,8 +46,8 @@ type roundRobinSelector struct {
 	priorityIndexes map[int]int // Maps priority level to current round-robin index
 }
 
-// NewRoundRobinSelector creates a new round-robin selector
-func NewRoundRobinSelector() SelectionStrategyImpl {
+// newRoundRobinSelector creates a new round-robin selector
+func newRoundRobinSelector() selectionStrategy {
 	return &roundRobinSelector{
 		priorityIndexes: make(map[int]int),
 	}
@@ -118,8 +118,8 @@ type randomSelector struct {
 	rng   *rand.Rand
 }
 
-// NewRandomSelector creates a new random selector
-func NewRandomSelector() SelectionStrategyImpl {
+// newRandomSelector creates a new random selector
+func newRandomSelector() selectionStrategy {
 	return &randomSelector{
 		rng: rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
@@ -195,8 +195,8 @@ type providerLoadStats struct {
 	lastUsed       time.Time
 }
 
-// NewLeastLoadedSelector creates a new least-loaded selector
-func NewLeastLoadedSelector(failureTracker map[string]*FailureInfo) SelectionStrategyImpl {
+// newLeastLoadedSelector creates a new least-loaded selector
+func newLeastLoadedSelector(failureTracker map[string]*FailureInfo) selectionStrategy {
 	return &leastLoadedSelector{
 		providerStats:  make(map[string]*providerLoadStats),
 		failureTracker: failureTracker,
@@ -288,17 +288,17 @@ func (s *leastLoadedSelector) Reset() {
 	s.providerStats = make(map[string]*providerLoadStats)
 }
 
-// NewSelectionStrategyImpl creates a provider selector based on the selection strategy
-func NewSelectionStrategyImpl(strategy SelectionStrategy, failureTracker map[string]*FailureInfo) (SelectionStrategyImpl, error) {
+// NewselectionStrategy creates a provider selector based on the selection strategy
+func newSelectionStrategy(strategy SelectionStrategy, failureTracker map[string]*FailureInfo) (selectionStrategy, error) {
 	switch strategy {
 	case SelectionStrategyPriorityOnly:
-		return NewPriorityOnlySelector(), nil
+		return newPriorityOnlySelector(), nil
 	case SelectionStrategyRoundRobin:
-		return NewRoundRobinSelector(), nil
+		return newRoundRobinSelector(), nil
 	case SelectionStrategyRandom:
-		return NewRandomSelector(), nil
+		return newRandomSelector(), nil
 	case SelectionStrategyLeastLoaded:
-		return NewLeastLoadedSelector(failureTracker), nil
+		return newLeastLoadedSelector(failureTracker), nil
 	default:
 		return nil, fmt.Errorf("unknown selection strategy: %s", strategy)
 	}

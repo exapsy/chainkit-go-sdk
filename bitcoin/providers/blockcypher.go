@@ -50,7 +50,7 @@ func (p *blockcypher) Name() string {
 	return "Blockcypher"
 }
 
-func (p *blockcypher) FetchUTXOs(ctx context.Context, address string) ([]types.UTXO, error) {
+func (p *blockcypher) GetUTXOs(ctx context.Context, address string) ([]types.UTXO, error) {
 	ctx = chainkit.WithProviderName(ctx, p.Name())
 
 	flags := map[string]string{

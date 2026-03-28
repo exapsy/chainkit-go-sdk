@@ -20,7 +20,7 @@ type ProviderManager struct {
 	mutex            sync.RWMutex
 	config           ChainConfig
 	semaphore        chan struct{}         // For controlling concurrency
-	selector         SelectionStrategyImpl // Selection strategy for choosing providers
+	selector         selectionStrategy // Selection strategy for choosing providers
 }
 
 // FailureInfo tracks failure statistics for a provider with enhanced retry tracking
@@ -162,10 +162,10 @@ func NewProviderManager(config ChainConfig) *ProviderManager {
 	}
 
 	// Initialize the selector based on the configured strategy
-	selector, err := NewSelectionStrategyImpl(config.SelectionStrategy, pm.failureTracker)
+	selector, err := newSelectionStrategy(config.SelectionStrategy, pm.failureTracker)
 	if err != nil {
 		// Fall back to priority-only if there's an error
-		selector = NewPriorityOnlySelector()
+		selector = newPriorityOnlySelector()
 	}
 	pm.selector = selector
 
@@ -495,10 +495,10 @@ func (pm *ProviderManager) UpdateChainConfig(config ChainConfig) {
 
 	// Update selector if strategy changed
 	if oldStrategy != config.SelectionStrategy {
-		selector, err := NewSelectionStrategyImpl(config.SelectionStrategy, pm.failureTracker)
+		selector, err := newSelectionStrategy(config.SelectionStrategy, pm.failureTracker)
 		if err != nil {
 			// Fall back to priority-only if there's an error
-			selector = NewPriorityOnlySelector()
+			selector = newPriorityOnlySelector()
 		}
 		pm.selector = selector
 	}
@@ -577,7 +577,7 @@ func (pm *ProviderManager) SetSelectionStrategy(strategy SelectionStrategy) erro
 		return fmt.Errorf("invalid selection strategy: %s", strategy)
 	}
 
-	selector, err := NewSelectionStrategyImpl(strategy, pm.failureTracker)
+	selector, err := newSelectionStrategy(strategy, pm.failureTracker)
 	if err != nil {
 		return err
 	}

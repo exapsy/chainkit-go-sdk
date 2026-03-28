@@ -125,10 +125,10 @@ type AddressValidatorConfig struct {
 	ChainConfig *ChainConfig // Optional - if provided, will be applied to the chain
 }
 
-type FeeFetcherConfig struct {
-	Fetcher     FeeFetcher
+type FeeRecommenderConfig struct {
+	Recommender FeeRecommender
 	Priority    int
-	Name        string       // Optional - if empty, will be derived from Fetcher.Name()
+	Name        string       // Optional - if empty, will be derived from Recommender.Name()
 	ChainConfig *ChainConfig // Optional - if provided, will be applied to the chain
 }
 

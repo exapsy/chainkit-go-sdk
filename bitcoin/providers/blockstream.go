@@ -27,7 +27,7 @@ type BlockstreamProvider interface {
 	chainkit.UTXOFetcher
 	chainkit.BalanceFetcher
 	chainkit.AddressValidator
-	chainkit.FeeFetcher
+	chainkit.FeeRecommender
 }
 
 type blockstream struct {
@@ -93,7 +93,7 @@ func (p *blockstream) Name() string {
 	return "Blockstream"
 }
 
-func (p *blockstream) FetchUTXOs(ctx context.Context, address string) ([]types.UTXO, error) {
+func (p *blockstream) GetUTXOs(ctx context.Context, address string) ([]types.UTXO, error) {
 	ctx = chainkit.WithProviderName(ctx, p.Name())
 
 	// GET /address/:address/utxo
@@ -137,7 +137,7 @@ func (p *blockstream) FetchUTXOs(ctx context.Context, address string) ([]types.U
 func (p *blockstream) GetBalance(ctx context.Context, address string, options *chainkit.GetBalanceOptions) (uint64, error) {
 	ctx = chainkit.WithProviderName(ctx, p.Name())
 
-	utxos, err := p.FetchUTXOs(ctx, address)
+	utxos, err := p.GetUTXOs(ctx, address)
 	if err != nil {
 		return 0, fmt.Errorf("failed to fetch UTXOs: %w", err)
 	}
@@ -153,7 +153,7 @@ func (p *blockstream) GetBalance(ctx context.Context, address string, options *c
 func (p *blockstream) GetConfirmedBalance(ctx context.Context, address string) (uint64, error) {
 	ctx = chainkit.WithProviderName(ctx, p.Name())
 
-	utxos, err := p.FetchUTXOs(ctx, address)
+	utxos, err := p.GetUTXOs(ctx, address)
 	if err != nil {
 		return 0, fmt.Errorf("failed to fetch UTXOs: %w", err)
 	}
@@ -177,7 +177,7 @@ func (p *blockstream) GetConfirmedBalance(ctx context.Context, address string) (
 func (p *blockstream) GetUnconfirmedBalance(ctx context.Context, address string) (uint64, error) {
 	ctx = chainkit.WithProviderName(ctx, p.Name())
 
-	utxos, err := p.FetchUTXOs(ctx, address)
+	utxos, err := p.GetUTXOs(ctx, address)
 	if err != nil {
 		return 0, fmt.Errorf("failed to fetch UTXOs: %w", err)
 	}
@@ -486,7 +486,7 @@ func (p *blockstream) getFeeEstimates(ctx context.Context) (BlockstreamFeeEstima
 	return feeEstimates, nil
 }
 
-// GetTxFees implements FeeFetcher interface
+// GetTxFees implements FeeRecommender interface
 // Returns fee estimates for different confirmation targets (fast, medium, slow)
 func (p *blockstream) GetTxFees(ctx context.Context) ([]types.FeeTier, error) {
 	ctx = chainkit.WithProviderName(ctx, p.Name())
@@ -539,7 +539,7 @@ func (p *blockstream) GetTxFees(ctx context.Context) ([]types.FeeTier, error) {
 	return feeTiers, nil
 }
 
-// GetTxFee implements FeeFetcher interface
+// GetTxFee implements FeeRecommender interface
 // Returns a specific fee tier by index
 func (p *blockstream) GetTxFee(ctx context.Context, feeTier int) (types.FeeTier, error) {
 	fees, err := p.GetTxFees(ctx)
@@ -559,7 +559,7 @@ func (p *blockstream) GetCapabilities() []chainkit.ProviderCapability {
 	return []chainkit.ProviderCapability{
 		chainkit.CapabilityAddressValidation,
 		chainkit.CapabilityBalanceFetching,
-		chainkit.CapabilityFeeFetching,
+		chainkit.CapabilityFeeRecommending,
 		chainkit.CapabilityUTXOFetching,
 	}
 }
