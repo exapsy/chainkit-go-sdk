@@ -219,10 +219,11 @@ func (pm *ProviderManager) AddProvider(provider interface{}, priority int, name 
 }
 
 // GetAvailableProviders returns providers that are currently available (considering circuit breaker, health, etc.)
-// The providers are ordered according to the configured selection strategy
+// The providers are ordered according to the configured selection strategy.
+// Uses a write lock because isProviderAvailable may transition circuit state (OPEN → HALF_OPEN).
 func (pm *ProviderManager) GetAvailableProviders() []ProviderConfig {
-	pm.mutex.RLock()
-	defer pm.mutex.RUnlock()
+	pm.mutex.Lock()
+	defer pm.mutex.Unlock()
 
 	available := make([]ProviderConfig, 0)
 	now := time.Now()
@@ -268,34 +269,33 @@ func (pm *ProviderManager) ClearSelectedProvider() {
 func (pm *ProviderManager) RunOp(ctx context.Context, op func(ctx context.Context, provider interface{}) (interface{}, error)) (data interface{}, providerName string, duration time.Duration, err error) {
 	var lastErr error
 
+	// GetAvailableProviders already filters out circuit-open / rate-limited providers.
 	providers := pm.GetAvailableProviders()
 	if len(providers) == 0 {
 		return nil, "", 0, fmt.Errorf("no available providers")
 	}
 
-	name, found := GetProviderName(ctx)
-	if found {
-		// If context specifies a provider, try only that one
-		selected, found := pm.GetProvider(name)
-		if found && pm.isProviderAvailable(selected.Name, time.Now()) {
-			pm.mutex.Lock()
-			pm.selectedProvider = selected.Name
-			pm.mutex.Unlock()
-		} else {
+	// Narrow to a single provider if one is pinned — either via context or via
+	// SetSelectedProvider. We always filter from the already-available list so we
+	// never try a provider that the circuit breaker has disabled.
+	if name, found := GetProviderName(ctx); found {
+		// Context-pinned provider: find it inside the available list.
+		pinned, ok := findProviderByName(providers, name)
+		if !ok {
 			return nil, "", 0, fmt.Errorf("context-specified provider %s is not available", name)
 		}
-	}
-
-	// If a specific provider is selected, try only that one
-	pm.mutex.RLock()
-	sel := pm.selectedProvider
-	pm.mutex.RUnlock()
-	if sel != "" {
-		selected, found := pm.GetProvider(sel)
-		if found && pm.isProviderAvailable(selected.Name, time.Now()) {
-			providers = []ProviderConfig{selected}
-		} else {
-			return nil, "", 0, fmt.Errorf("selected provider %s is not available", sel)
+		providers = []ProviderConfig{pinned}
+	} else {
+		// Persistent pin set via SetSelectedProvider.
+		pm.mutex.RLock()
+		sel := pm.selectedProvider
+		pm.mutex.RUnlock()
+		if sel != "" {
+			pinned, ok := findProviderByName(providers, sel)
+			if !ok {
+				return nil, "", 0, fmt.Errorf("selected provider %s is not available", sel)
+			}
+			providers = []ProviderConfig{pinned}
 		}
 	}
 
@@ -585,6 +585,17 @@ func (pm *ProviderManager) SetSelectionStrategy(strategy SelectionStrategy) erro
 	pm.selector = selector
 	pm.config.SelectionStrategy = strategy
 	return nil
+}
+
+// findProviderByName returns the first provider in list whose name matches (case-insensitive).
+func findProviderByName(list []ProviderConfig, name string) (ProviderConfig, bool) {
+	lower := strings.ToLower(name)
+	for _, p := range list {
+		if strings.ToLower(p.Name) == lower {
+			return p, true
+		}
+	}
+	return ProviderConfig{}, false
 }
 
 // GetSelectionStrategy returns the current selection strategy

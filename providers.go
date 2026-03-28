@@ -29,7 +29,7 @@ func (m *MixedProviders) Name() string {
 	return "MixedProviders"
 }
 
-// Helper function to execute operations with fallback between providers with metrics tracking
+// executeWithFallbackAndMetrics runs fn through the provider chain with fallback and metrics.
 func executeWithFallbackAndMetrics[ResultT any](
 	ctx context.Context,
 	manager *ProviderManager,
@@ -38,24 +38,22 @@ func executeWithFallbackAndMetrics[ResultT any](
 	fn func(any) (ResultT, error),
 ) (ResultT, error) {
 	var zero ResultT
-	providers := manager.GetAvailableProviders()
 
-	if len(providers) == 0 {
+	if len(manager.GetAvailableProviders()) == 0 {
 		return zero, fmt.Errorf("%w: no provider registered for %s", ErrProviderNotConfigured, operation)
 	}
 
 	result, providerName, duration, err := manager.RunOp(ctx, func(ctx context.Context, provider interface{}) (interface{}, error) { return fn(provider) })
+	metricsRecorder.RecordBlockchainRequest(ctx, providerName, operation, err == nil, duration)
 	if err != nil {
 		return zero, err
 	}
 
-	// Record metrics for this provider call
-	metricsRecorder.RecordBlockchainRequest(ctx, providerName, operation, true, duration)
-
 	return result.(ResultT), nil
 }
 
-// executeWithFallbackAndMetricsWithContext is like executeWithFallbackAndMetrics but returns updated context
+// executeWithFallbackAndMetricsWithContext is like executeWithFallbackAndMetrics but also
+// returns an updated context carrying the name of the provider that handled the request.
 func executeWithFallbackAndMetricsWithContext[ResultT any](
 	ctx context.Context,
 	manager *ProviderManager,
@@ -64,27 +62,16 @@ func executeWithFallbackAndMetricsWithContext[ResultT any](
 	fn func(any) (ResultT, error),
 ) (context.Context, ResultT, error) {
 	var zero ResultT
-	providers := manager.GetAvailableProviders()
 
-	if len(providers) == 0 {
+	if len(manager.GetAvailableProviders()) == 0 {
 		return ctx, zero, fmt.Errorf("%w: no provider registered for %s", ErrProviderNotConfigured, operation)
 	}
 
 	result, providerName, duration, err := manager.RunOp(ctx, func(ctx context.Context, provider interface{}) (interface{}, error) { return fn(provider) })
-
-	// Set the provider name in the context so callers can access it
 	ctx = WithProviderName(ctx, providerName)
-
+	metricsRecorder.RecordBlockchainRequest(ctx, providerName, operation, err == nil, duration)
 	if err != nil {
 		return ctx, zero, err
-	}
-
-	// Record metrics for this provider call
-	success := true
-	metricsRecorder.RecordBlockchainRequest(ctx, providerName, operation, success, duration)
-
-	if !success {
-		return ctx, zero, fmt.Errorf("operation %s failed on provider %s: %w", operation, providerName, err)
 	}
 
 	return ctx, result.(ResultT), nil

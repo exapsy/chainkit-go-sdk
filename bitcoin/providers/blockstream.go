@@ -97,37 +97,32 @@ func (p *blockstream) GetUTXOs(ctx context.Context, address string) ([]types.UTX
 	ctx = chainkit.WithProviderName(ctx, p.Name())
 
 	// GET /address/:address/utxo
-	//
-	// Get the list of unspent transaction outputs associated with the address/scripthash.
-	//
-	// Available fields: txid, vout, value and status (with the status of the funding tx).
-	//
-	// Elements-based chains have a valuecommitment field that may appear in place of value, plus the following additional fields: asset/assetcommitment, nonce/noncecommitment, surjection_proof and range_proof.
-	//
-	endpoint := fmt.Sprintf("/address/%s/utxo", address)
-
-	body, err := p.callAPI("GET", endpoint, nil)
+	// Returns: txid, vout, value, status.confirmed
+	body, err := p.callAPI(ctx, "GET", fmt.Sprintf("/address/%s/utxo", address), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch UTXOs from Blockstream: %w", err)
 	}
 
 	var utxoResponses []struct {
-		TxID  string `json:"txid"`
-		Vout  uint32 `json:"vout"`
-		Value uint64 `json:"value"`
+		TxID   string `json:"txid"`
+		Vout   uint32 `json:"vout"`
+		Value  uint64 `json:"value"`
+		Status struct {
+			Confirmed bool `json:"confirmed"`
+		} `json:"status"`
 	}
 
-	err = json.Unmarshal(body, &utxoResponses)
-	if err != nil {
+	if err = json.Unmarshal(body, &utxoResponses); err != nil {
 		return nil, fmt.Errorf("failed to parse UTXO response: %w", err)
 	}
 
-	var utxos []types.UTXO
-	for _, utxoResp := range utxoResponses {
+	utxos := make([]types.UTXO, 0, len(utxoResponses))
+	for _, u := range utxoResponses {
 		utxos = append(utxos, types.UTXO{
-			TxHash: utxoResp.TxID,
-			Vout:   utxoResp.Vout,
-			Amount: int64(utxoResp.Value),
+			TxHash:    u.TxID,
+			Vout:      u.Vout,
+			Amount:    int64(u.Value),
+			Confirmed: u.Status.Confirmed,
 		})
 	}
 
@@ -160,13 +155,7 @@ func (p *blockstream) GetConfirmedBalance(ctx context.Context, address string) (
 
 	var balance uint64
 	for _, utxo := range utxos {
-		// Get transaction status to check if confirmed
-		txStatus, err := p.getTxStatus(utxo.TxHash)
-		if err != nil {
-			return 0, fmt.Errorf("failed to get transaction status: %w", err)
-		}
-
-		if txStatus.Confirmed {
+		if utxo.Confirmed {
 			balance += uint64(utxo.Amount)
 		}
 	}
@@ -184,13 +173,7 @@ func (p *blockstream) GetUnconfirmedBalance(ctx context.Context, address string)
 
 	var balance uint64
 	for _, utxo := range utxos {
-		// Get transaction status to check if confirmed
-		txStatus, err := p.getTxStatus(utxo.TxHash)
-		if err != nil {
-			return 0, fmt.Errorf("failed to get transaction status: %w", err)
-		}
-
-		if !txStatus.Confirmed {
+		if !utxo.Confirmed {
 			balance += uint64(utxo.Amount)
 		}
 	}
@@ -231,7 +214,8 @@ func (p *blockstream) ValidateAddress(ctx context.Context, address string) (bool
 	return true, nil
 }
 
-func (p *blockstream) GetAccessToken() (string, error) {
+// GetAccessToken returns a valid OAuth access token, refreshing it if expired.
+func (p *blockstream) GetAccessToken(ctx context.Context) (string, error) {
 	// Fast path: check under read lock first
 	p.tokenMu.RLock()
 	if p.accessToken != "" && time.Now().Before(p.accessTokenExpirationTime) {
@@ -261,45 +245,41 @@ func (p *blockstream) GetAccessToken() (string, error) {
 	data.Set("client_secret", p.clientSecret)
 	data.Set("grant_type", "client_credentials")
 
-	req, err := http.NewRequest(
+	req, err := http.NewRequestWithContext(
+		ctx,
 		http.MethodPost,
 		endpoint,
-		io.NopCloser(strings.NewReader(data.Encode())),
+		strings.NewReader(data.Encode()),
 	)
 	if err != nil {
-		return "", fmt.Errorf("error creating request: %w", err)
+		return "", fmt.Errorf("error creating token request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp, err := http.DefaultClient.Do(req)
+	// Use the shared client (which has a timeout) instead of http.DefaultClient.
+	resp, err := blockstreamHTTPClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("error getting access token: %w", err)
+		return "", fmt.Errorf("error fetching access token: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("token endpoint returned %d: %s", resp.StatusCode, string(body))
 	}
 
 	var tokenResponse struct {
-		AccessToken      string `json:"access_token"`
-		ExpiresIn        int    `json:"expires_in"`
-		RefreshExpiresIn int    `json:"refresh_expires_in"`
-		TokenType        string `json:"token_type"`
-		IDToken          string `json:"id_token"`
-		NotBefore        int    `json:"not_before"`
-		Scope            string `json:"scope"`
+		AccessToken string `json:"access_token"`
+		ExpiresIn   int    `json:"expires_in"`
 	}
 
-	err = json.NewDecoder(resp.Body).Decode(&tokenResponse)
-	if err != nil {
-		return "", fmt.Errorf("error decoding response: %w", err)
+	if err = json.NewDecoder(resp.Body).Decode(&tokenResponse); err != nil {
+		return "", fmt.Errorf("error decoding token response: %w", err)
 	}
 
 	p.accessToken = tokenResponse.AccessToken
-	p.accessTokenExpirationTime = time.Now().
-		Add(time.Duration(tokenResponse.ExpiresIn) * time.Second)
+	p.accessTokenExpirationTime = time.Now().Add(time.Duration(tokenResponse.ExpiresIn) * time.Second)
 
 	return p.accessToken, nil
 }
@@ -310,6 +290,7 @@ var blockstreamHTTPClient = &http.Client{
 }
 
 func (p *blockstream) callAPI(
+	ctx context.Context,
 	method string,
 	endpoint string,
 	params map[string]string,
@@ -318,12 +299,12 @@ func (p *blockstream) callAPI(
 	retried := false
 
 	for {
-		token, err := p.GetAccessToken()
+		token, err := p.GetAccessToken(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get access token: %w", err)
 		}
 
-		req, err := http.NewRequest(method, fullURL, nil)
+		req, err := http.NewRequestWithContext(ctx, method, fullURL, nil)
 		if err != nil {
 			return nil, fmt.Errorf("error creating request: %w", err)
 		}
@@ -381,8 +362,8 @@ type blockstreamGetTxResponse struct {
 	BlockHash   *string `json:"block_hash"`
 }
 
-func (p *blockstream) getTxStatus(txID string) (blockstreamGetTxResponse, error) {
-	body, err := p.callAPI(http.MethodGet, "/tx/"+txID+"/status", nil)
+func (p *blockstream) getTxStatus(ctx context.Context, txID string) (blockstreamGetTxResponse, error) {
+	body, err := p.callAPI(ctx, http.MethodGet, "/tx/"+txID+"/status", nil)
 	if err != nil {
 		return blockstreamGetTxResponse{}, err
 	}
@@ -472,7 +453,7 @@ func (p *blockstream) getFeeEstimates(ctx context.Context) (BlockstreamFeeEstima
 
 	endpoint := "/fee-estimates"
 
-	body, err := p.callAPI("GET", endpoint, nil)
+	body, err := p.callAPI(ctx, "GET", endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch fee estimates from Blockstream: %w", err)
 	}

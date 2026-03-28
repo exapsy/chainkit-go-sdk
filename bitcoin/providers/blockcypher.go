@@ -62,20 +62,12 @@ func (p *blockcypher) GetUTXOs(ctx context.Context, address string) ([]types.UTX
 		return nil, fmt.Errorf("failed to fetch address details: %w", err)
 	}
 
-	if addr.Balance.Cmp(big.NewInt(0)) <= 0 {
-		return nil, errors.New("address has no balance")
-	}
-
-	if len(addr.TXRefs) == 0 {
-		return nil, errors.New("address has no transactions")
-	}
-
-	var utxos []types.UTXO
-
+	utxos := make([]types.UTXO, 0, len(addr.TXRefs))
 	for _, txRef := range addr.TXRefs {
 		utxos = append(utxos, types.UTXO{
-			TxHash: txRef.TXHash,
-			Amount: txRef.Value.Int64(),
+			TxHash:    txRef.TXHash,
+			Amount:    txRef.Value.Int64(),
+			Confirmed: txRef.Confirmations > 0,
 		})
 	}
 

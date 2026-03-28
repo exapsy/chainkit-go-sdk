@@ -178,7 +178,8 @@ type UTXO struct {
 
 	// Optional metadata (useful but not required for tx creation)
 	Address       string `json:"address"`       // Bitcoin address associated with this UTXO
-	Confirmations int64  `json:"confirmations"` // Number of confirmations
+	Confirmed     bool   `json:"confirmed"`     // Whether the funding transaction is confirmed
+	Confirmations int64  `json:"confirmations"` // Number of confirmations (0 if unconfirmed)
 	Spendable     bool   `json:"spendable"`     // Whether this UTXO is spendable by the wallet
 	BlockHeight   int32  `json:"block_height"`  // Height of the block containing the transaction
 }

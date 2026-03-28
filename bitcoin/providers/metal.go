@@ -251,44 +251,40 @@ func (p *metal) SignTransaction(
 
 			wireTx.TxIn[i].Witness = witnessSignature
 		case txscript.ScriptHashTy:
-			// Could be P2SH-wrapped SegWit
-			// More complex - need to detect if it's P2SH-P2WPKH or P2SH-P2WSH
-			// This requires extracting the redeem script
+			// P2SH-P2WPKH: the redeemScript is the P2WPKH witness program (OP_0 <pubKeyHash>).
 			addrHash := btcutil.Hash160(w.SerializePubKey())
 
+			// OP_0 pushes the version byte; AddData pushes the 20-byte hash with its
+			// length prefix — producing the correct 22-byte P2WPKH script.
 			redeemScript, err := txscript.NewScriptBuilder().
-				AddData([]byte{0x00, 0x14}).
+				AddOp(txscript.OP_0).
 				AddData(addrHash).
 				Script()
 			if err != nil {
 				return nil, fmt.Errorf("failed to create redeem script for input %d: %w", i, err)
 			}
 
-			// Create signature using witness program
-			witnessProgram := redeemScript[2:] // Skip the first 2 bytes (0x00, 0x14)
-
+			// WitnessSignature expects the full P2WPKH script (22 bytes), not the raw hash.
 			witnessSignature, err := txscript.WitnessSignature(
 				wireTx,
 				txscript.NewTxSigHashes(wireTx, prevOutputFetcher),
 				i,
 				utxo.Amount,
-				witnessProgram,
+				redeemScript,
 				txscript.SigHashAll,
 				w.PrivKey,
 				true,
 			)
 			if err != nil {
-				return nil, fmt.Errorf(
-					"failed to create witness signature for input %d: %w",
-					i,
-					err,
-				)
+				return nil, fmt.Errorf("failed to create witness signature for input %d: %w", i, err)
 			}
 
-			// For P2SH-P2WPKH, signature script is just the redeem script
-			wireTx.TxIn[i].SignatureScript = append(
-				[]byte{byte(len(redeemScript))},
-				redeemScript...)
+			// For P2SH-P2WPKH the signatureScript is a single data-push of the redeemScript.
+			sigScript, err := txscript.NewScriptBuilder().AddData(redeemScript).Script()
+			if err != nil {
+				return nil, fmt.Errorf("failed to build signature script for input %d: %w", i, err)
+			}
+			wireTx.TxIn[i].SignatureScript = sigScript
 			wireTx.TxIn[i].Witness = witnessSignature
 		default:
 			return nil, fmt.Errorf("unsupported script type for input %d: %s", i, scriptClass)
