@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/exapsy/chainkit"
@@ -138,14 +139,20 @@ func (s *coingecko) GetExchangeRate(
 
 	defer resp.Body.Close()
 
-	currencyMap := make(map[string]float64)
+	// CoinGecko response: {"bitcoin": {"usd": 67432.89}}
+	priceMap := make(map[string]map[string]float64)
 
-	err = json.NewDecoder(resp.Body).Decode(&currencyMap)
+	err = json.NewDecoder(resp.Body).Decode(&priceMap)
 	if err != nil {
 		return nil, err
 	}
 
-	price, ok := currencyMap[currency.String()]
+	coinPrices, ok := priceMap[coin.CoingeckoString()]
+	if !ok {
+		return nil, &types.CoinNotSupportedError{Coin: coin.CoingeckoString()}
+	}
+
+	price, ok := coinPrices[strings.ToLower(currency.String())]
 	if !ok {
 		return nil, &types.CurrencyNotSupportedError{
 			Currency: currency.String(),

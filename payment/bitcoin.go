@@ -93,7 +93,5 @@ func ConvertSatoshisToBitcoin(sat *big.Int) (*big.Float, error) {
 	amountFloat := new(big.Float).SetInt(sat)
 	amountFloat.Quo(amountFloat, big.NewFloat(satBitcoinRate))
 
-	result := new(big.Float).Mul(amountFloat, big.NewFloat(satBitcoinRate))
-
-	return result, nil
+	return amountFloat, nil
 }

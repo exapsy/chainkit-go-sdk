@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"time"
 
@@ -192,8 +193,12 @@ func (b *Bitrefcom) GetTxFees(ctx context.Context) ([]types.FeeTier, error) {
 	for block, feeRate := range resp {
 		blockNum := 0
 		fmt.Sscanf(block, "%d", &blockNum)
+		rounded := uint64(math.Round(feeRate))
+		if rounded < 1 {
+			rounded = 1
+		}
 		feeTiers = append(feeTiers, types.FeeTier{
-			FeeRate:     uint64(feeRate), // FeeRate in sat/vB
+			FeeRate:     rounded,
 			TargetBlock: blockNum,
 		})
 	}

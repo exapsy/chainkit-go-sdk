@@ -20,54 +20,40 @@ func NewProviderSelector(mixedProvider BlockchainProvider, selectedProvider stri
 	}
 }
 
+// ctxWithProvider returns ctx with the selected provider name injected, if one is set.
+func (ps *ProviderSelector) ctxWithProvider(ctx context.Context) context.Context {
+	if ps.selectedProvider != "" {
+		return WithProviderName(ctx, ps.selectedProvider)
+	}
+	return ctx
+}
+
 // GetBalance gets balance using either the selected provider or the mixed provider chain
 func (ps *ProviderSelector) GetBalance(ctx context.Context, address string, opts *GetBalanceOptions) (uint64, error) {
-	if ps.selectedProvider == "" {
-		// Use the mixed provider chain (default behavior)
-		return ps.mixedProvider.GetBalance(ctx, address, opts)
-	}
-
-	return ps.mixedProvider.GetBalance(ctx, address, opts)
+	return ps.mixedProvider.GetBalance(ps.ctxWithProvider(ctx), address, opts)
 }
 
 // GetConfirmedBalance gets confirmed balance
 func (ps *ProviderSelector) GetConfirmedBalance(ctx context.Context, address string) (uint64, error) {
-	if ps.selectedProvider == "" {
-		return ps.mixedProvider.GetConfirmedBalance(ctx, address)
-	}
-	return ps.mixedProvider.GetConfirmedBalance(ctx, address)
+	return ps.mixedProvider.GetConfirmedBalance(ps.ctxWithProvider(ctx), address)
 }
 
 // GetUnconfirmedBalance gets unconfirmed balance
 func (ps *ProviderSelector) GetUnconfirmedBalance(ctx context.Context, address string) (uint64, error) {
-	if ps.selectedProvider == "" {
-		return ps.mixedProvider.GetUnconfirmedBalance(ctx, address)
-	}
-	return ps.mixedProvider.GetUnconfirmedBalance(ctx, address)
+	return ps.mixedProvider.GetUnconfirmedBalance(ps.ctxWithProvider(ctx), address)
 }
 
 // FetchUTXOs fetches UTXOs for an address
 func (ps *ProviderSelector) FetchUTXOs(ctx context.Context, address string) ([]types.UTXO, error) {
-	if ps.selectedProvider == "" {
-		return ps.mixedProvider.FetchUTXOs(ctx, address)
-	}
-	return ps.mixedProvider.FetchUTXOs(ctx, address)
+	return ps.mixedProvider.FetchUTXOs(ps.ctxWithProvider(ctx), address)
 }
 
 // GetTxFees gets transaction fees
 func (ps *ProviderSelector) GetTxFees(ctx context.Context) ([]types.FeeTier, error) {
-	if ps.selectedProvider == "" {
-		return ps.mixedProvider.GetTxFees(ctx)
-	}
-	return ps.mixedProvider.GetTxFees(ctx)
+	return ps.mixedProvider.GetTxFees(ps.ctxWithProvider(ctx))
 }
 
 // ValidateAddress validates an address using either the selected provider or the mixed provider chain
 func (ps *ProviderSelector) ValidateAddress(ctx context.Context, address string) (bool, error) {
-	if ps.selectedProvider == "" {
-		// Use the mixed provider chain (default behavior)
-		return ps.mixedProvider.ValidateAddress(ctx, address)
-	}
-
-	return ps.mixedProvider.ValidateAddress(ctx, address)
+	return ps.mixedProvider.ValidateAddress(ps.ctxWithProvider(ctx), address)
 }

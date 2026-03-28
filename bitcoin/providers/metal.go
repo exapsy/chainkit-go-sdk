@@ -330,12 +330,18 @@ func (p *metal) CreateTransaction(ctx context.Context, utxos []types.UTXO, outpu
 		return nil, errors.New("no outputs provided")
 	}
 
+	netParams, err := p.network.ChaincfgNetwork()
+	if err != nil {
+		return nil, err
+	}
+
 	// Create a new transaction
 	tx := &types.Tx{
 		Version: 2, // Default to version 2
 		Inputs:  make([]*types.TxInput, 0, len(utxos)),
 		Outputs: make([]*types.TxOutput, 0, len(outputs)),
 		Status:  types.TxStatusPending,
+		Params:  netParams,
 	}
 
 	// Add inputs from UTXOs

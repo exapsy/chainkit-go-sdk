@@ -474,8 +474,9 @@ func (b *MixedProvidersBuilder) WithTxStatusFetcher(fetcher TxStatusFetcher) *Mi
 	return b.AddTxStatusFetcher(fetcher, 1, "default")
 }
 
-// Build creates the final MixedProviders instance
-func (b *MixedProvidersBuilder) Build() BlockchainProvider {
+// Build creates the final MixedProviders instance.
+// Returns an error if any required provider interface has no registered provider.
+func (b *MixedProvidersBuilder) Build() (BlockchainProvider, error) {
 	// Check that at least one provider exists for each required interface
 	managers := map[string]*ProviderManager{
 		ProviderTypeAddressGenerator.String(): b.addressGenerators,
@@ -498,7 +499,7 @@ func (b *MixedProvidersBuilder) Build() BlockchainProvider {
 	}
 
 	if len(missingInterfaces) > 0 {
-		panic("Missing required interfaces: " + fmt.Sprintf("%v", missingInterfaces))
+		return nil, fmt.Errorf("missing required provider interfaces: %v", missingInterfaces)
 	}
 
 	return &MixedProviders{
@@ -516,5 +517,5 @@ func (b *MixedProvidersBuilder) Build() BlockchainProvider {
 		balanceFetchers:   b.balanceFetchers,
 		rateFetchers:      b.rateFetchers,
 		metricsRecorder:   b.metricsRecorder,
-	}
+	}, nil
 }

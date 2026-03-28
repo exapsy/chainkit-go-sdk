@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/exapsy/chainkit"
@@ -32,6 +34,7 @@ type blockstream struct {
 	clientID     string
 	clientSecret string
 
+	tokenMu                   sync.RWMutex
 	accessToken               string
 	accessTokenExpirationTime time.Time
 
@@ -229,7 +232,20 @@ func (p *blockstream) ValidateAddress(ctx context.Context, address string) (bool
 }
 
 func (p *blockstream) GetAccessToken() (string, error) {
-	// Check if token is still valid
+	// Fast path: check under read lock first
+	p.tokenMu.RLock()
+	if p.accessToken != "" && time.Now().Before(p.accessTokenExpirationTime) {
+		token := p.accessToken
+		p.tokenMu.RUnlock()
+		return token, nil
+	}
+	p.tokenMu.RUnlock()
+
+	// Slow path: fetch a new token under write lock
+	p.tokenMu.Lock()
+	defer p.tokenMu.Unlock()
+
+	// Re-check after acquiring write lock (another goroutine may have refreshed it)
 	if p.accessToken != "" && time.Now().Before(p.accessTokenExpirationTime) {
 		return p.accessToken, nil
 	}
@@ -298,71 +314,65 @@ func (p *blockstream) callAPI(
 	endpoint string,
 	params map[string]string,
 ) ([]byte, error) {
-	// Construct the full URL
 	fullURL := p.baseURL + endpoint
+	retried := false
 
-retry:
-	// Get access token if needed
-	_, err := p.GetAccessToken()
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to get access token: %w", err)
-	}
-
-	// Create a new request
-	req, err := http.NewRequest(method, fullURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("error creating request: %w", err)
-	}
-
-	req.Header.Add("Authorization", "Bearer "+p.accessToken)
-
-	// Add query parameters if provided
-	if params != nil {
-		q := req.URL.Query()
-		for key, value := range params {
-			q.Add(key, value)
-		}
-
-		req.URL.RawQuery = q.Encode()
-	}
-
-	// Execute request using shared client
-	resp, err := blockstreamHTTPClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("error executing request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// Handle specific status codes
-	switch resp.StatusCode {
-	case http.StatusOK:
-		// Continue with successful response
-	case http.StatusUnauthorized:
-		// Force token refresh and retry
-		p.accessToken = ""
-
-		_, err := p.GetAccessToken()
+	for {
+		token, err := p.GetAccessToken()
 		if err != nil {
-			return nil, fmt.Errorf("error refreshing access token: %w", err)
+			return nil, fmt.Errorf("failed to get access token: %w", err)
 		}
 
-		goto retry
-	case http.StatusNotFound:
-		return nil, errors.New("transaction not found")
-	case http.StatusTooManyRequests:
-		return nil, errors.New("rate limit exceeded")
-	default:
-		return nil, fmt.Errorf("API request failed with status code: %d", resp.StatusCode)
-	}
+		req, err := http.NewRequest(method, fullURL, nil)
+		if err != nil {
+			return nil, fmt.Errorf("error creating request: %w", err)
+		}
 
-	// Read the response body
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("error reading response body: %w", err)
-	}
+		req.Header.Add("Authorization", "Bearer "+token)
 
-	return body, nil
+		if params != nil {
+			q := req.URL.Query()
+			for key, value := range params {
+				q.Add(key, value)
+			}
+			req.URL.RawQuery = q.Encode()
+		}
+
+		resp, err := blockstreamHTTPClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("error executing request: %w", err)
+		}
+
+		switch resp.StatusCode {
+		case http.StatusOK:
+			body, err := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if err != nil {
+				return nil, fmt.Errorf("error reading response body: %w", err)
+			}
+			return body, nil
+		case http.StatusUnauthorized:
+			resp.Body.Close()
+			if retried {
+				return nil, errors.New("unauthorized: token refresh did not resolve the issue")
+			}
+			retried = true
+			// Invalidate cached token so GetAccessToken fetches a fresh one
+			p.tokenMu.Lock()
+			p.accessToken = ""
+			p.tokenMu.Unlock()
+		case http.StatusNotFound:
+			resp.Body.Close()
+			return nil, errors.New("transaction not found")
+		case http.StatusTooManyRequests:
+			resp.Body.Close()
+			return nil, errors.New("rate limit exceeded")
+		default:
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			return nil, fmt.Errorf("API request failed with status code: %d: %s", resp.StatusCode, string(body))
+		}
+	}
 }
 
 type blockstreamGetTxResponse struct {
@@ -490,10 +500,18 @@ func (p *blockstream) GetTxFees(ctx context.Context) ([]types.FeeTier, error) {
 	// We'll map to standard fee tiers: fast (1 block), medium (6 blocks), slow (144 blocks)
 	var feeTiers []types.FeeTier
 
+	roundFeeRate := func(f float64) uint64 {
+		r := uint64(math.Round(f))
+		if r < 1 {
+			r = 1
+		}
+		return r
+	}
+
 	// Fast: 1 block (highest priority)
 	if feeRate, ok := estimates["1"]; ok {
 		feeTiers = append(feeTiers, types.FeeTier{
-			FeeRate:     uint64(feeRate),
+			FeeRate:     roundFeeRate(feeRate),
 			TargetBlock: 1,
 		})
 	}
@@ -501,7 +519,7 @@ func (p *blockstream) GetTxFees(ctx context.Context) ([]types.FeeTier, error) {
 	// Medium: 6 blocks
 	if feeRate, ok := estimates["6"]; ok {
 		feeTiers = append(feeTiers, types.FeeTier{
-			FeeRate:     uint64(feeRate),
+			FeeRate:     roundFeeRate(feeRate),
 			TargetBlock: 6,
 		})
 	}
@@ -509,7 +527,7 @@ func (p *blockstream) GetTxFees(ctx context.Context) ([]types.FeeTier, error) {
 	// Slow: 144 blocks (~1 day)
 	if feeRate, ok := estimates["144"]; ok {
 		feeTiers = append(feeTiers, types.FeeTier{
-			FeeRate:     uint64(feeRate),
+			FeeRate:     roundFeeRate(feeRate),
 			TargetBlock: 144,
 		})
 	}

@@ -10,7 +10,9 @@ import (
 
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
+	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
+	"github.com/btcsuite/btcd/btcutil"
 )
 
 type BitcoinNetwork string
@@ -26,7 +28,7 @@ const (
 
 func (n BitcoinNetwork) IsValid() bool {
 	switch n {
-	case BitcoinNetworkMainnet, BitcoinNetworkTestnet3, BitcoinNetworkTestnet4, BitcoinNetworkRegtest:
+	case BitcoinNetworkMainnet, BitcoinNetworkTestnet3, BitcoinNetworkRegtest:
 		return true
 	default:
 		return false
@@ -39,8 +41,8 @@ func (b BitcoinNetwork) ChaincfgNetwork() (*chaincfg.Params, error) {
 		return &chaincfg.MainNetParams, nil
 	case BitcoinNetworkTestnet3:
 		return &chaincfg.TestNet3Params, nil
-	case BitcoinNetworkTestnet4: // Note: chaincfg does not have Testnet4Params, using TestNet3Params as placeholder
-		return &chaincfg.TestNet3Params, nil
+	case BitcoinNetworkTestnet4:
+		return nil, fmt.Errorf("testnet4 is not yet supported; use testnet3 or regtest")
 	case BitcoinNetworkRegtest:
 		return &chaincfg.RegressionNetParams, nil
 	case BitcoinNetworkSimnet:
@@ -220,7 +222,7 @@ func (us *UTXOSet) Select(targetAmount, feeRate int64) ([]UTXO, int64, error) {
 		selectedUTXOs = append(selectedUTXOs, *utxo)
 		changeAmount += utxo.Amount
 
-		if utxo.Amount+changeAmount >= targetAmount {
+		if changeAmount >= targetAmount {
 			break
 		}
 	}
@@ -243,6 +245,9 @@ type Tx struct {
 	Outputs []*TxOutput
 	Fee     uint64
 	Status  TxStatus
+	// Params must be set to the network's chaincfg.Params so that Serialize and Hash
+	// can produce valid scriptPubKeys for the outputs. If nil, Serialize returns an error.
+	Params *chaincfg.Params
 }
 
 func (tx *Tx) MarshalJSON() ([]byte, error) {
@@ -274,7 +279,10 @@ func (tx *Tx) MarshalJSON() ([]byte, error) {
 }
 
 func (tx *Tx) Serialize() ([]byte, error) {
-	// Serialize the transaction to bytes
+	if tx.Params == nil {
+		return nil, errors.New("Tx.Params must be set to network chaincfg.Params before serializing")
+	}
+
 	wireTx := wire.NewMsgTx(tx.Version)
 
 	for _, input := range tx.Inputs {
@@ -287,8 +295,17 @@ func (tx *Tx) Serialize() ([]byte, error) {
 	}
 
 	for _, output := range tx.Outputs {
-		value := output.Value.Int64()
-		wireTx.AddTxOut(wire.NewTxOut(value, []byte(output.Address)))
+		addr, err := btcutil.DecodeAddress(output.Address, tx.Params)
+		if err != nil {
+			return nil, fmt.Errorf("invalid output address %q: %w", output.Address, err)
+		}
+
+		pkScript, err := txscript.PayToAddrScript(addr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build scriptPubKey for %q: %w", output.Address, err)
+		}
+
+		wireTx.AddTxOut(wire.NewTxOut(output.Value.Int64(), pkScript))
 	}
 
 	var buf bytes.Buffer
@@ -330,10 +347,10 @@ type CoinRate struct {
 func (r CoinRate) MarshalJSON() ([]byte, error) {
 	type Alias CoinRate
 
-	rate, _ := r.Rate.Int64()
+	rate, _ := r.Rate.Float64()
 
 	return json.Marshal(&struct {
-		Rate int64 `json:"rate"`
+		Rate float64 `json:"rate"`
 		*Alias
 	}{
 		Rate:  rate,

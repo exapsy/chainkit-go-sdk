@@ -278,19 +278,24 @@ func (pm *ProviderManager) RunOp(ctx context.Context, op func(ctx context.Contex
 		// If context specifies a provider, try only that one
 		selected, found := pm.GetProvider(name)
 		if found && pm.isProviderAvailable(selected.Name, time.Now()) {
+			pm.mutex.Lock()
 			pm.selectedProvider = selected.Name
+			pm.mutex.Unlock()
 		} else {
 			return nil, "", 0, fmt.Errorf("context-specified provider %s is not available", name)
 		}
 	}
 
 	// If a specific provider is selected, try only that one
-	if pm.selectedProvider != "" {
-		selected, found := pm.GetProvider(pm.selectedProvider)
+	pm.mutex.RLock()
+	sel := pm.selectedProvider
+	pm.mutex.RUnlock()
+	if sel != "" {
+		selected, found := pm.GetProvider(sel)
 		if found && pm.isProviderAvailable(selected.Name, time.Now()) {
 			providers = []ProviderConfig{selected}
 		} else {
-			return nil, "", 0, fmt.Errorf("selected provider %s is not available", pm.selectedProvider)
+			return nil, "", 0, fmt.Errorf("selected provider %s is not available", sel)
 		}
 	}
 

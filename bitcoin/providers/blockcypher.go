@@ -51,7 +51,7 @@ func (p *blockcypher) Name() string {
 }
 
 func (p *blockcypher) FetchUTXOs(ctx context.Context, address string) ([]types.UTXO, error) {
-	chainkit.WithProviderName(ctx, p.Name())
+	ctx = chainkit.WithProviderName(ctx, p.Name())
 
 	flags := map[string]string{
 		"unspent": "true",
