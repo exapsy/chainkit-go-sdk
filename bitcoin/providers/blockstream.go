@@ -372,7 +372,6 @@ func (p *blockstream) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 	start := time.Now()
 
 	url := fmt.Sprintf("%s/blocks/tip/height", p.baseURL)
-	client := &http.Client{Timeout: 5 * time.Second}
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return chainkit.HealthStatus{
@@ -389,7 +388,7 @@ func (p *blockstream) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 		req.Header.Set("X-Client-Id", p.clientID)
 	}
 
-	resp, err := client.Do(req)
+	resp, err := blockstreamHTTPClient.Do(req)
 	responseDuration := time.Since(start)
 	responseTimeMs := responseDuration.Milliseconds()
 	responseTimeUs := responseDuration.Microseconds()

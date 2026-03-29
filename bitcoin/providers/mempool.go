@@ -199,6 +199,14 @@ func (s *mempoolProvider) ConvertCoin(
 func (m *mempoolProvider) GetBalance(ctx context.Context, address string, opts *chainkit.GetBalanceOptions) (uint64, error) {
 	ctx = chainkit.WithProviderName(ctx, m.Name())
 
+	if opts != nil && len(opts.UTXOs) > 0 {
+		var total uint64
+		for _, u := range opts.UTXOs {
+			total += uint64(u.Amount)
+		}
+		return total, nil
+	}
+
 	url := fmt.Sprintf("%s/address/%s", m.baseURL, address)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {

@@ -3,6 +3,7 @@ package chainkit
 import (
 	"fmt"
 	"math/rand"
+	"sort"
 	"sync"
 	"time"
 )
@@ -72,6 +73,7 @@ func (s *roundRobinSelector) SelectProviders(available []ProviderConfig) []Provi
 		}
 		priorityGroups[provider.Priority] = append(priorityGroups[provider.Priority], provider)
 	}
+	sort.Ints(priorities)
 
 	// Build result with round-robin within each priority group
 	result := make([]ProviderConfig, 0, len(available))
@@ -144,6 +146,7 @@ func (s *randomSelector) SelectProviders(available []ProviderConfig) []ProviderC
 		}
 		priorityGroups[provider.Priority] = append(priorityGroups[provider.Priority], provider)
 	}
+	sort.Ints(priorities)
 
 	// Build result with random ordering within each priority group
 	result := make([]ProviderConfig, 0, len(available))
@@ -222,6 +225,7 @@ func (s *leastLoadedSelector) SelectProviders(available []ProviderConfig) []Prov
 		}
 		priorityGroups[provider.Priority] = append(priorityGroups[provider.Priority], provider)
 	}
+	sort.Ints(priorities)
 
 	// Build result with least-loaded ordering within each priority group
 	result := make([]ProviderConfig, 0, len(available))

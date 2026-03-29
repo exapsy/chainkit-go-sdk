@@ -559,9 +559,11 @@ func (pm *ProviderManager) GetProviderStats(providerName string) map[string]inte
 	}
 
 	if rateLimit, exists := pm.rateLimitStates[providerName]; exists {
-		stats["rate_limit_request_times"] = rateLimit.RequestTimes
+		rateLimit.mutex.Lock()
+		stats["rate_limit_request_times"] = append([]time.Time(nil), rateLimit.RequestTimes...)
 		stats["rate_limit_burst_tokens"] = rateLimit.BurstTokens
 		stats["rate_limit_last_refill"] = rateLimit.LastRefill
+		rateLimit.mutex.Unlock()
 	}
 
 	return stats

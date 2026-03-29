@@ -58,8 +58,12 @@ func (n BitcoinNetwork) String() string {
 		return "mainnet"
 	case BitcoinNetworkTestnet3:
 		return "testnet3"
+	case BitcoinNetworkTestnet4:
+		return "testnet4"
 	case BitcoinNetworkRegtest:
 		return "regtest"
+	case BitcoinNetworkSimnet:
+		return "simnet"
 	default:
 		return ""
 	}

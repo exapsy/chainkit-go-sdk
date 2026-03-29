@@ -180,8 +180,7 @@ func (s *coingecko) GetExchangeRate(
 func (s *coingecko) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 	start := time.Now()
 
-	url := "https://api.coingecko.com/api/v3/ping"
-	client := &http.Client{Timeout: 5 * time.Second}
+	url := s.coinGeckoBaseURL + "/ping"
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return chainkit.HealthStatus{
@@ -193,7 +192,7 @@ func (s *coingecko) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 		}
 	}
 
-	resp, err := client.Do(req)
+	resp, err := s.httpClient.Do(req)
 	responseDuration := time.Since(start)
 	responseTimeMs := responseDuration.Milliseconds()
 	responseTimeUs := responseDuration.Microseconds()

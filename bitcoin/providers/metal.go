@@ -9,7 +9,6 @@ import (
 
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/btcutil/hdkeychain"
-	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
@@ -385,24 +384,6 @@ func (p *metal) ValidateAddress(ctx context.Context, address string) (bool, erro
 		return false, nil // Invalid address
 	}
 	return true, nil // Valid address
-}
-
-func getBitcoinNetworkFromExtendedKey(extendedKey *hdkeychain.ExtendedKey) types.BitcoinNetwork {
-	// Check each network explicitly
-	if extendedKey.IsForNet(&chaincfg.MainNetParams) {
-		return types.BitcoinNetworkMainnet
-	}
-	if extendedKey.IsForNet(&chaincfg.TestNet3Params) {
-		return types.BitcoinNetworkTestnet3
-	}
-	if extendedKey.IsForNet(&chaincfg.RegressionNetParams) {
-		return types.BitcoinNetworkRegtest
-	}
-	if extendedKey.IsForNet(&chaincfg.SimNetParams) {
-		return types.BitcoinNetworkSimnet
-	}
-
-	return types.BitcoinNetworkUnknown
 }
 
 // CheckHealth performs a health check on the Metal provider (local/offline)
