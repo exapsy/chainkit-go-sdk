@@ -107,6 +107,9 @@ func (rls *RateLimitState) CanMakeRequest(config RateLimitConfig, now time.Time)
 		}
 
 		if rls.BurstTokens > 0 {
+			// Consume the token atomically here so concurrent callers
+			// cannot both observe the same non-zero count and both proceed.
+			rls.BurstTokens--
 			return true
 		}
 	}
@@ -114,7 +117,8 @@ func (rls *RateLimitState) CanMakeRequest(config RateLimitConfig, now time.Time)
 	return false
 }
 
-// RecordRequest records a successful request
+// RecordRequest records a dispatched request for rate-window tracking.
+// Burst token consumption is handled atomically inside CanMakeRequest.
 func (rls *RateLimitState) RecordRequest(config RateLimitConfig, now time.Time) {
 	if !config.Enabled {
 		return
@@ -123,13 +127,8 @@ func (rls *RateLimitState) RecordRequest(config RateLimitConfig, now time.Time) 
 	rls.mutex.Lock()
 	defer rls.mutex.Unlock()
 
-	// Add the request timestamp
+	// Add the request timestamp for the sliding-window count.
 	rls.RequestTimes = append(rls.RequestTimes, now)
-
-	// Consume burst token if burst was used
-	if config.BurstSize > 0 && len(rls.RequestTimes) > config.MaxRequests {
-		rls.BurstTokens = maxInt(0, rls.BurstTokens-1)
-	}
 }
 
 // Helper functions for min/max (using different names to avoid builtin collision)
@@ -489,7 +488,7 @@ func (pm *ProviderManager) UpdateChainConfig(config ChainConfig) {
 	pm.config = config
 
 	// Resize semaphore if concurrency limit changed
-	if len(pm.semaphore) != config.MaxConcurrency {
+	if cap(pm.semaphore) != config.MaxConcurrency {
 		pm.semaphore = make(chan struct{}, config.MaxConcurrency)
 	}
 

@@ -173,11 +173,7 @@ func (m *MixedProviders) GetUnconfirmedBalance(ctx context.Context, address stri
 
 func (m *MixedProviders) ValidateAddress(ctx context.Context, address string) (bool, error) {
 	return executeWithFallbackAndMetrics(ctx, m.addressValidators, m.metricsRecorder, "ValidateAddress", func(provider interface{}) (bool, error) {
-		if validator, ok := provider.(AddressValidator); ok {
-			return validator.ValidateAddress(ctx, address)
-		}
-		// If provider doesn't support address validation, consider it valid for now
-		return true, nil
+		return provider.(AddressValidator).ValidateAddress(ctx, address)
 	})
 }
 

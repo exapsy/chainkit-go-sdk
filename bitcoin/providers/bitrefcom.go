@@ -72,22 +72,22 @@ func (b *Bitrefcom) callAPI(
 	method string,
 	endpoint string,
 	body io.Reader,
-) (responseBody []byte, status int, err error) {
+) ([]byte, error) {
 	if b.baseURL == "" {
-		return nil, 0, errors.New("base URL not set")
+		return nil, errors.New("base URL not set")
 	}
 
 	if b.apiKey == "" {
-		return nil, 0, errors.New("API key not set")
+		return nil, errors.New("API key not set")
 	}
 
 	if endpoint == "" {
-		return nil, 0, errors.New("endpoint not set")
+		return nil, errors.New("endpoint not set")
 	}
 
 	req, err := http.NewRequestWithContext(ctx, method, b.baseURL+endpoint, body)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 
 	req.Header.Set("X-Api-Key", b.apiKey)
@@ -99,21 +99,21 @@ func (b *Bitrefcom) callAPI(
 
 	resp, err := b.httpClient.Do(req)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
-
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, resp.StatusCode, errors.New("unexpected status code")
+		respBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(respBody))
 	}
 
-	responseBody, err = io.ReadAll(resp.Body)
+	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 
-	return responseBody, resp.StatusCode, nil
+	return responseBody, nil
 }
 
 func (b *Bitrefcom) GetTxFee(ctx context.Context, feeTier int) (types.FeeTier, error) {
@@ -121,13 +121,9 @@ func (b *Bitrefcom) GetTxFee(ctx context.Context, feeTier int) (types.FeeTier, e
 
 	endpoint := fmt.Sprintf("/v1/fees/estimate/%d", feeTier)
 
-	body, status, err := b.callAPI(ctx, http.MethodGet, endpoint, nil)
+	body, err := b.callAPI(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return types.FeeTier{}, err
-	}
-
-	if status != http.StatusOK {
-		return types.FeeTier{}, fmt.Errorf("unexpected status code: %d", status)
 	}
 
 	/*
@@ -163,13 +159,9 @@ func (b *Bitrefcom) GetTxFees(ctx context.Context) ([]types.FeeTier, error) {
 
 	endpoint := "/v1/fees/estimates"
 
-	body, status, err := b.callAPI(ctx, http.MethodGet, endpoint, nil)
+	body, err := b.callAPI(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
-	}
-
-	if status != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", status)
 	}
 
 	/*
@@ -229,7 +221,7 @@ func (b *Bitrefcom) PushTx(ctx context.Context, rawTx []byte) (txID string, err 
 	}
 
 	// Make the API call
-	responseBody, status, err := b.callAPI(
+	responseBody, err := b.callAPI(
 		ctx,
 		http.MethodPost,
 		endpoint,
@@ -237,10 +229,6 @@ func (b *Bitrefcom) PushTx(ctx context.Context, rawTx []byte) (txID string, err 
 	)
 	if err != nil {
 		return "", fmt.Errorf("failed to broadcast transaction: %w", err)
-	}
-
-	if status != http.StatusOK {
-		return "", fmt.Errorf("transaction broadcast failed with status code: %d", status)
 	}
 
 	// Parse the response
@@ -264,13 +252,9 @@ type balanceResponse struct {
 // fetchBalanceData is a helper method that fetches balance data from the API
 func (b *Bitrefcom) fetchBalanceData(ctx context.Context, address string) (*balanceResponse, error) {
 	endpoint := fmt.Sprintf("/v1/address/%s/balance", address)
-	body, status, err := b.callAPI(ctx, http.MethodGet, endpoint, nil)
+	body, err := b.callAPI(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch address details: %w", err)
-	}
-
-	if status != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", status)
 	}
 
 	var resp balanceResponse

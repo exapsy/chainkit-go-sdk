@@ -123,6 +123,9 @@ func (p *blockcypher) GetBalance(
 	}
 
 	totalBalance := new(big.Int).Add(&addr.Balance, &addr.UnconfirmedBalance)
+	if totalBalance.Sign() < 0 {
+		return 0, nil
+	}
 
 	return uint64(totalBalance.Int64()), nil
 }

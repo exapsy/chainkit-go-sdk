@@ -546,6 +546,7 @@ func (m *mempoolProvider) GetUTXOs(ctx context.Context, address string) ([]types
 			Vout:          apiUtxo.Vout,
 			Amount:        apiUtxo.Value,
 			Address:       address,
+			Confirmed:     apiUtxo.Status.Confirmed,
 			Confirmations: confirmations,
 			Spendable:     true, // Mempool only returns unspent outputs
 			BlockHeight:   apiUtxo.Status.BlockHeight,
