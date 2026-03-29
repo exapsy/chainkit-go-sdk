@@ -189,7 +189,7 @@ func (p *metal) SignTransaction(
 
 		outputPkScripts[i] = pkScript
 
-		txOut := wire.NewTxOut(output.Value.Int64(), pkScript)
+		txOut := wire.NewTxOut(output.Value, pkScript)
 
 		wireTx.AddTxOut(txOut)
 	}

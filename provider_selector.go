@@ -34,6 +34,10 @@ func (ps *ProviderSelector) GetBalance(ctx context.Context, address string, opts
 	return ps.mixedProvider.GetBalance(ps.ctxWithProvider(ctx), address, opts)
 }
 
+func (ps *ProviderSelector) GetBalanceWithContext(ctx context.Context, address string, opts *GetBalanceOptions) (context.Context, uint64, error) {
+	return ps.mixedProvider.GetBalanceWithContext(ps.ctxWithProvider(ctx), address, opts)
+}
+
 func (ps *ProviderSelector) GetConfirmedBalance(ctx context.Context, address string) (uint64, error) {
 	return ps.mixedProvider.GetConfirmedBalance(ps.ctxWithProvider(ctx), address)
 }

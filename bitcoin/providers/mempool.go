@@ -256,6 +256,11 @@ func (m *mempoolProvider) GetConfirmedBalance(ctx context.Context, address strin
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return 0, &types.RequestError{Message: fmt.Sprintf("API returned status %d: %s", resp.StatusCode, string(body))}
+	}
+
 	var result struct {
 		ChainStats struct {
 			FundedTxoSum int64 `json:"funded_txo_sum"`
@@ -291,6 +296,11 @@ func (m *mempoolProvider) GetUnconfirmedBalance(ctx context.Context, address str
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return 0, &types.RequestError{Message: fmt.Sprintf("API returned status %d: %s", resp.StatusCode, string(body))}
+	}
+
 	var result struct {
 		MempoolStats struct {
 			FundedTxoSum int64 `json:"funded_txo_sum"`
@@ -325,6 +335,11 @@ func (m *mempoolProvider) GetTxFees(ctx context.Context) ([]types.FeeTier, error
 		return nil, &types.RequestError{Err: err, Message: "failed to fetch fees"}
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, &types.RequestError{Message: fmt.Sprintf("API returned status %d: %s", resp.StatusCode, string(body))}
+	}
 
 	var result struct {
 		FastestFee  int64 `json:"fastestFee"`

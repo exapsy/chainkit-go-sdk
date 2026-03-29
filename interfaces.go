@@ -15,7 +15,7 @@
 //	metal := providers.NewMetal(types.BitcoinNetworkMainnet)
 //	mempool := providers.NewMempool(types.BitcoinNetworkMainnet, "https://mempool.space/api")
 //
-//	client, err := chainkit.NewMixedProvidersBuilder().
+//	client := chainkit.NewMixedProvidersBuilder().
 //	    WithAddressGeneratorChain(chainkit.AddressGeneratorConfig{Generator: metal, Priority: 1}).
 //	    WithTxAssemblerChain(chainkit.TxAssemblerConfig{Assembler: metal, Priority: 1}).
 //	    WithTxSignerChain(chainkit.TxSignerConfig{Signer: metal, Priority: 1}).
@@ -28,9 +28,6 @@
 //	    WithTxBroadcasterChain(chainkit.TxBroadcasterConfig{Broadcaster: mempool, Priority: 1}).
 //	    WithTxStatusFetcher(mempool).
 //	    Build()
-//	if err != nil {
-//	    return err
-//	}
 //
 // Not all roles are required. Only register the capabilities you actually use.
 // If you call a method whose role has no registered provider, you receive an
@@ -225,4 +222,8 @@ type BlockchainProvider interface {
 	RateFetcher
 	AddressValidator
 	TxStatusFetcher
+
+	// GetBalanceWithContext is like GetBalance but also returns the updated context
+	// carrying the name of the provider that served the request.
+	GetBalanceWithContext(ctx context.Context, address string, opts *GetBalanceOptions) (context.Context, uint64, error)
 }

@@ -160,8 +160,8 @@ type SignedTx struct {
 }
 
 type TxOutput struct {
-	Address string   `json:"address"`
-	Value   *big.Int `json:"value"` // Amount in satoshis, using big.Int for large values
+	Address string `json:"address"`
+	Value   int64  `json:"value"` // Amount in satoshis
 }
 
 // UTXO represents an unspent transaction output that can be used as an input in a new transaction.
@@ -306,7 +306,7 @@ func (tx *Tx) Serialize() ([]byte, error) {
 			return nil, fmt.Errorf("failed to build scriptPubKey for %q: %w", output.Address, err)
 		}
 
-		wireTx.AddTxOut(wire.NewTxOut(output.Value.Int64(), pkScript))
+		wireTx.AddTxOut(wire.NewTxOut(output.Value, pkScript))
 	}
 
 	var buf bytes.Buffer

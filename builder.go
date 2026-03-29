@@ -149,6 +149,7 @@ func (b *MixedProvidersBuilder) AddAddressValidator(validator AddressValidator, 
 
 // WithBalanceFetcherChain adds a chain of BalanceFetchers to the builder
 func (b *MixedProvidersBuilder) WithBalanceFetcherChain(fetchers ...BalanceFetcherConfig) *MixedProvidersBuilder {
+	chainConfigApplied := false
 	for _, fetcher := range fetchers {
 		// Skip nil fetchers to prevent panics
 		if fetcher.Fetcher == nil {
@@ -164,8 +165,9 @@ func (b *MixedProvidersBuilder) WithBalanceFetcherChain(fetchers ...BalanceFetch
 			}
 		}
 
-		if fetcher.ChainConfig != nil {
+		if fetcher.ChainConfig != nil && !chainConfigApplied {
 			b.balanceFetchers.UpdateChainConfig(*fetcher.ChainConfig)
+			chainConfigApplied = true
 		}
 
 		b.balanceFetchers.AddProvider(fetcher.Fetcher, fetcher.Priority, name)
@@ -174,6 +176,7 @@ func (b *MixedProvidersBuilder) WithBalanceFetcherChain(fetchers ...BalanceFetch
 }
 
 func (b *MixedProvidersBuilder) WithRateFetcherChain(fetchers ...RateFetcherConfig) *MixedProvidersBuilder {
+	chainConfigApplied := false
 	for _, fetcher := range fetchers {
 		// Skip nil fetchers to prevent panics
 		if fetcher.Fetcher == nil {
@@ -189,8 +192,9 @@ func (b *MixedProvidersBuilder) WithRateFetcherChain(fetchers ...RateFetcherConf
 			}
 		}
 
-		if fetcher.ChainConfig != nil {
+		if fetcher.ChainConfig != nil && !chainConfigApplied {
 			b.rateFetchers.UpdateChainConfig(*fetcher.ChainConfig)
+			chainConfigApplied = true
 		}
 
 		b.rateFetchers.AddProvider(fetcher.Fetcher, fetcher.Priority, name)
@@ -199,6 +203,7 @@ func (b *MixedProvidersBuilder) WithRateFetcherChain(fetchers ...RateFetcherConf
 }
 
 func (b *MixedProvidersBuilder) WithAddressGeneratorChain(generators ...AddressGeneratorConfig) *MixedProvidersBuilder {
+	chainConfigApplied := false
 	for _, generator := range generators {
 		// Skip nil generators to prevent panics
 		if generator.Generator == nil {
@@ -214,8 +219,9 @@ func (b *MixedProvidersBuilder) WithAddressGeneratorChain(generators ...AddressG
 			}
 		}
 
-		if generator.ChainConfig != nil {
+		if generator.ChainConfig != nil && !chainConfigApplied {
 			b.addressGenerators.UpdateChainConfig(*generator.ChainConfig)
+			chainConfigApplied = true
 		}
 
 		b.addressGenerators.AddProvider(generator.Generator, generator.Priority, name)
@@ -226,6 +232,7 @@ func (b *MixedProvidersBuilder) WithAddressGeneratorChain(generators ...AddressG
 // WithFeeRecommenderChain adds one or more [FeeRecommender] providers with per-entry
 // priority and optional chain configuration.
 func (b *MixedProvidersBuilder) WithFeeRecommenderChain(recommenders ...FeeRecommenderConfig) *MixedProvidersBuilder {
+	chainConfigApplied := false
 	for _, r := range recommenders {
 		if r.Recommender == nil {
 			continue
@@ -240,8 +247,9 @@ func (b *MixedProvidersBuilder) WithFeeRecommenderChain(recommenders ...FeeRecom
 			}
 		}
 
-		if r.ChainConfig != nil {
+		if r.ChainConfig != nil && !chainConfigApplied {
 			b.feeRecommenders.UpdateChainConfig(*r.ChainConfig)
+			chainConfigApplied = true
 		}
 
 		b.feeRecommenders.AddProvider(r.Recommender, r.Priority, name)
@@ -257,6 +265,7 @@ func (b *MixedProvidersBuilder) WithFeeFetcherChain(fetchers ...FeeRecommenderCo
 }
 
 func (b *MixedProvidersBuilder) WithFeeEstimatorChain(estimators ...FeeEstimatorConfig) *MixedProvidersBuilder {
+	chainConfigApplied := false
 	for _, estimator := range estimators {
 		// Skip nil estimators to prevent panics
 		if estimator.Estimator == nil {
@@ -272,8 +281,9 @@ func (b *MixedProvidersBuilder) WithFeeEstimatorChain(estimators ...FeeEstimator
 			}
 		}
 
-		if estimator.ChainConfig != nil {
+		if estimator.ChainConfig != nil && !chainConfigApplied {
 			b.feeEstimators.UpdateChainConfig(*estimator.ChainConfig)
+			chainConfigApplied = true
 		}
 
 		b.feeEstimators.AddProvider(estimator.Estimator, estimator.Priority, name)
@@ -282,6 +292,7 @@ func (b *MixedProvidersBuilder) WithFeeEstimatorChain(estimators ...FeeEstimator
 }
 
 func (b *MixedProvidersBuilder) WithTxBroadcasterChain(broadcasters ...TxBroadcasterConfig) *MixedProvidersBuilder {
+	chainConfigApplied := false
 	for _, broadcaster := range broadcasters {
 		// Skip nil broadcasters to prevent panics
 		if broadcaster.Broadcaster == nil {
@@ -297,8 +308,9 @@ func (b *MixedProvidersBuilder) WithTxBroadcasterChain(broadcasters ...TxBroadca
 			}
 		}
 
-		if broadcaster.ChainConfig != nil {
+		if broadcaster.ChainConfig != nil && !chainConfigApplied {
 			b.txBroadcasters.UpdateChainConfig(*broadcaster.ChainConfig)
+			chainConfigApplied = true
 		}
 
 		b.txBroadcasters.AddProvider(broadcaster.Broadcaster, broadcaster.Priority, name)
@@ -307,6 +319,7 @@ func (b *MixedProvidersBuilder) WithTxBroadcasterChain(broadcasters ...TxBroadca
 }
 
 func (b *MixedProvidersBuilder) WithTxAssemblerChain(assemblers ...TxAssemblerConfig) *MixedProvidersBuilder {
+	chainConfigApplied := false
 	for _, assembler := range assemblers {
 		// Skip nil assemblers to prevent panics
 		if assembler.Assembler == nil {
@@ -322,8 +335,9 @@ func (b *MixedProvidersBuilder) WithTxAssemblerChain(assemblers ...TxAssemblerCo
 			}
 		}
 
-		if assembler.ChainConfig != nil {
+		if assembler.ChainConfig != nil && !chainConfigApplied {
 			b.txAssemblers.UpdateChainConfig(*assembler.ChainConfig)
+			chainConfigApplied = true
 		}
 
 		b.txAssemblers.AddProvider(assembler.Assembler, assembler.Priority, name)
@@ -332,6 +346,7 @@ func (b *MixedProvidersBuilder) WithTxAssemblerChain(assemblers ...TxAssemblerCo
 }
 
 func (b *MixedProvidersBuilder) WithTxSizerChain(sizers ...TxSizerConfig) *MixedProvidersBuilder {
+	chainConfigApplied := false
 	for _, sizer := range sizers {
 		// Skip nil sizers to prevent panics
 		if sizer.Sizer == nil {
@@ -347,8 +362,9 @@ func (b *MixedProvidersBuilder) WithTxSizerChain(sizers ...TxSizerConfig) *Mixed
 			}
 		}
 
-		if sizer.ChainConfig != nil {
+		if sizer.ChainConfig != nil && !chainConfigApplied {
 			b.txSizers.UpdateChainConfig(*sizer.ChainConfig)
+			chainConfigApplied = true
 		}
 
 		b.txSizers.AddProvider(sizer.Sizer, sizer.Priority, name)
@@ -357,6 +373,7 @@ func (b *MixedProvidersBuilder) WithTxSizerChain(sizers ...TxSizerConfig) *Mixed
 }
 
 func (b *MixedProvidersBuilder) WithTxSignerChain(signers ...TxSignerConfig) *MixedProvidersBuilder {
+	chainConfigApplied := false
 	for _, signer := range signers {
 		// Skip nil signers to prevent panics
 		if signer.Signer == nil {
@@ -372,8 +389,9 @@ func (b *MixedProvidersBuilder) WithTxSignerChain(signers ...TxSignerConfig) *Mi
 			}
 		}
 
-		if signer.ChainConfig != nil {
+		if signer.ChainConfig != nil && !chainConfigApplied {
 			b.txSigners.UpdateChainConfig(*signer.ChainConfig)
+			chainConfigApplied = true
 		}
 
 		b.txSigners.AddProvider(signer.Signer, signer.Priority, name)
@@ -382,6 +400,7 @@ func (b *MixedProvidersBuilder) WithTxSignerChain(signers ...TxSignerConfig) *Mi
 }
 
 func (b *MixedProvidersBuilder) WithUTXOFetcherChain(fetchers ...UTXOFetcherConfig) *MixedProvidersBuilder {
+	chainConfigApplied := false
 	for _, fetcher := range fetchers {
 		// Skip nil fetchers to prevent panics
 		if fetcher.Fetcher == nil {
@@ -397,8 +416,9 @@ func (b *MixedProvidersBuilder) WithUTXOFetcherChain(fetchers ...UTXOFetcherConf
 			}
 		}
 
-		if fetcher.ChainConfig != nil {
+		if fetcher.ChainConfig != nil && !chainConfigApplied {
 			b.utxoFetchers.UpdateChainConfig(*fetcher.ChainConfig)
+			chainConfigApplied = true
 		}
 
 		b.utxoFetchers.AddProvider(fetcher.Fetcher, fetcher.Priority, name)
@@ -407,6 +427,7 @@ func (b *MixedProvidersBuilder) WithUTXOFetcherChain(fetchers ...UTXOFetcherConf
 }
 
 func (b *MixedProvidersBuilder) WithAddressValidatorChain(validators ...AddressValidatorConfig) *MixedProvidersBuilder {
+	chainConfigApplied := false
 	for _, validator := range validators {
 		// Skip nil validators to prevent panics
 		if validator.Validator == nil {
@@ -422,8 +443,9 @@ func (b *MixedProvidersBuilder) WithAddressValidatorChain(validators ...AddressV
 			}
 		}
 
-		if validator.ChainConfig != nil {
+		if validator.ChainConfig != nil && !chainConfigApplied {
 			b.addressValidators.UpdateChainConfig(*validator.ChainConfig)
+			chainConfigApplied = true
 		}
 
 		b.addressValidators.AddProvider(validator.Validator, validator.Priority, name)
@@ -531,7 +553,7 @@ func (b *MixedProvidersBuilder) WithTxStatusFetcher(fetcher TxStatusFetcher) *Mi
 // Not all roles need to be registered. If you call a method whose role has no
 // registered provider you will receive an [ErrProviderNotConfigured] error at
 // that point — no upfront validation is performed.
-func (b *MixedProvidersBuilder) Build() (BlockchainProvider, error) {
+func (b *MixedProvidersBuilder) Build() BlockchainProvider {
 	return &MixedProviders{
 		addressGenerators: b.addressGenerators,
 		addressValidators: b.addressValidators,
@@ -547,5 +569,5 @@ func (b *MixedProvidersBuilder) Build() (BlockchainProvider, error) {
 		balanceFetchers:   b.balanceFetchers,
 		rateFetchers:      b.rateFetchers,
 		metricsRecorder:   b.metricsRecorder,
-	}, nil
+	}
 }
