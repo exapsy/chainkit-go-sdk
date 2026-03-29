@@ -59,8 +59,6 @@ func (p *metal) Name() string {
 }
 
 func (p *metal) DeriveAddress(ctx context.Context, xpub string, index uint32, childIndex uint32) (chainkit.DerivedAddress, error) {
-	ctx = chainkit.WithProviderName(ctx, p.Name())
-
 	extendedKey, err := hdkeychain.NewKeyFromString(xpub)
 	if err != nil {
 		return chainkit.DerivedAddress{}, fmt.Errorf("key parsing failed: %w", err)
@@ -113,20 +111,16 @@ func (p *metal) DeriveAddress(ctx context.Context, xpub string, index uint32, ch
 	}, nil
 }
 
-func (p *metal) CalculateFee(ctx context.Context, signedTxSize uint64, feePerByte uint64) (uint64, error) {
-	ctx = chainkit.WithProviderName(ctx, p.Name())
-
+func (p *metal) CalculateFee(_ context.Context, signedTxSize uint64, feePerByte uint64) (uint64, error) {
 	return signedTxSize * feePerByte, nil
 }
 
 func (p *metal) SignTransaction(
-	ctx context.Context,
+	_ context.Context,
 	tx *types.Tx,
 	utxos []types.UTXO,
 	privWIF string,
 ) (*types.SignedTx, error) {
-	ctx = chainkit.WithProviderName(ctx, p.Name())
-
 	if tx == nil {
 		return nil, errors.New("nil pointer: transaction cannot be nil")
 	}
@@ -323,15 +317,11 @@ func (p *metal) SignTransaction(
 	return signedTx, nil
 }
 
-func (p *metal) CalculateTransactionSize(ctx context.Context, tx *types.SignedTx) (uint64, error) {
-	ctx = chainkit.WithProviderName(ctx, p.Name())
-
+func (p *metal) CalculateTransactionSize(_ context.Context, tx *types.SignedTx) (uint64, error) {
 	return uint64(len(tx.RawSigned)), nil
 }
 
-func (p *metal) CreateTransaction(ctx context.Context, utxos []types.UTXO, outputs []types.TxOutput) (*types.Tx, error) {
-	ctx = chainkit.WithProviderName(ctx, p.Name())
-
+func (p *metal) CreateTransaction(_ context.Context, utxos []types.UTXO, outputs []types.TxOutput) (*types.Tx, error) {
 	if len(utxos) == 0 {
 		return nil, errors.New("no inputs provided")
 	}
@@ -370,9 +360,7 @@ func (p *metal) CreateTransaction(ctx context.Context, utxos []types.UTXO, outpu
 	return tx, nil
 }
 
-func (p *metal) ValidateAddress(ctx context.Context, address string) (bool, error) {
-	ctx = chainkit.WithProviderName(ctx, p.Name())
-
+func (p *metal) ValidateAddress(_ context.Context, address string) (bool, error) {
 	// Decode the address to check its validity
 	netParams, err := p.network.ChaincfgNetwork()
 	if err != nil {
