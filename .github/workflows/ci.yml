@@ -47,8 +47,11 @@ jobs:
           go-version: "1.25"
           cache: true
 
+      - name: Install golangci-lint
+        # Pre-built golangci-lint binaries are compiled with Go 1.24 and refuse
+        # to lint modules that declare go 1.25+. Building from source with the
+        # same Go version used by the project avoids the runtime version check.
+        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
-          args: --timeout=5m
+        run: golangci-lint run --timeout=5m
