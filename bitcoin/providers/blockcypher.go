@@ -52,8 +52,6 @@ func (p *blockcypher) Name() string {
 }
 
 func (p *blockcypher) GetUTXOs(ctx context.Context, address string) ([]types.UTXO, error) {
-	ctx = chainkit.WithProviderName(ctx, p.Name())
-
 	flags := map[string]string{
 		"unspent": "true",
 	}
@@ -81,8 +79,6 @@ func (p *blockcypher) GetUTXOs(ctx context.Context, address string) ([]types.UTX
 }
 
 func (p *blockcypher) ValidateAddress(ctx context.Context, address string) (bool, error) {
-	ctx = chainkit.WithProviderName(ctx, p.Name())
-
 	// Use BlockCypher's GetAddr endpoint to validate the address
 	// If the address is invalid, BlockCypher will return an error
 	_, err := p.Client.GetAddr(address, nil)
@@ -105,8 +101,6 @@ func (p *blockcypher) GetBalance(
 	address string,
 	opts *chainkit.GetBalanceOptions,
 ) (uint64, error) {
-	ctx = chainkit.WithProviderName(ctx, p.Name())
-
 	// If UTXOs are provided, calculate balance from them
 	if opts != nil && len(opts.UTXOs) > 0 {
 		balance, err := getBalanceByUTXOs(opts.UTXOs)
@@ -131,8 +125,6 @@ func (p *blockcypher) GetBalance(
 }
 
 func (p *blockcypher) GetConfirmedBalance(ctx context.Context, address string) (uint64, error) {
-	ctx = chainkit.WithProviderName(ctx, p.Name())
-
 	addr, err := p.Client.GetAddr(address, nil)
 	if err != nil {
 		return 0, fmt.Errorf("failed to fetch address details: %w", err)
@@ -142,8 +134,6 @@ func (p *blockcypher) GetConfirmedBalance(ctx context.Context, address string) (
 }
 
 func (p *blockcypher) GetUnconfirmedBalance(ctx context.Context, address string) (uint64, error) {
-	ctx = chainkit.WithProviderName(ctx, p.Name())
-
 	addr, err := p.Client.GetAddr(address, nil)
 	if err != nil {
 		return 0, fmt.Errorf("failed to fetch address details: %w", err)

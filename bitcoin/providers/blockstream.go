@@ -347,26 +347,6 @@ func (p *blockstream) callAPI(
 	}
 }
 
-type blockstreamGetTxResponse struct {
-	Confirmed   bool    `json:"confirmed"`
-	BlockHeight *int    `json:"block_height"`
-	BlockHash   *string `json:"block_hash"`
-}
-
-func (p *blockstream) getTxStatus(ctx context.Context, txID string) (blockstreamGetTxResponse, error) {
-	body, err := p.callAPI(ctx, http.MethodGet, "/tx/"+txID+"/status", nil)
-	if err != nil {
-		return blockstreamGetTxResponse{}, err
-	}
-
-	var response blockstreamGetTxResponse
-	if err := json.Unmarshal(body, &response); err != nil {
-		return blockstreamGetTxResponse{}, fmt.Errorf("error parsing response: %w", err)
-	}
-
-	return response, nil
-}
-
 // CheckHealth performs a health check on the Blockstream API
 func (p *blockstream) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 	start := time.Now()

@@ -139,13 +139,6 @@ func minInt(a, b int) int {
 	return b
 }
 
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
 // NewProviderManager creates a new provider manager with chain configuration
 func NewProviderManager(config ChainConfig) *ProviderManager {
 	semaphore := make(chan struct{}, config.MaxConcurrency)

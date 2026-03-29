@@ -195,7 +195,6 @@ type leastLoadedSelector struct {
 
 type providerLoadStats struct {
 	activeRequests int64
-	lastUsed       time.Time
 }
 
 // newLeastLoadedSelector creates a new least-loaded selector
