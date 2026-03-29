@@ -123,6 +123,7 @@ func (p *blockstream) GetUTXOs(ctx context.Context, address string) ([]types.UTX
 			Vout:      u.Vout,
 			Amount:    int64(u.Value),
 			Confirmed: u.Status.Confirmed,
+			Address:   address,
 		})
 	}
 
@@ -131,6 +132,14 @@ func (p *blockstream) GetUTXOs(ctx context.Context, address string) ([]types.UTX
 
 func (p *blockstream) GetBalance(ctx context.Context, address string, options *chainkit.GetBalanceOptions) (uint64, error) {
 	ctx = chainkit.WithProviderName(ctx, p.Name())
+
+	if options != nil && len(options.UTXOs) > 0 {
+		var balance uint64
+		for _, utxo := range options.UTXOs {
+			balance += uint64(utxo.Amount)
+		}
+		return balance, nil
+	}
 
 	utxos, err := p.GetUTXOs(ctx, address)
 	if err != nil {
@@ -184,33 +193,15 @@ func (p *blockstream) GetUnconfirmedBalance(ctx context.Context, address string)
 func (p *blockstream) ValidateAddress(ctx context.Context, address string) (bool, error) {
 	ctx = chainkit.WithProviderName(ctx, p.Name())
 
-	// Use Blockstream's address endpoint to validate the address
-	// If the address is invalid, Blockstream will return a 400 error
-	endpoint := fmt.Sprintf("%s/address/%s", p.baseURL, address)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
+	// callAPI returns an error for non-200 status codes (including 400 invalid address).
+	// A 400 response means the address format is invalid; any other error is unexpected.
+	_, err := p.callAPI(ctx, "GET", fmt.Sprintf("/address/%s", address), nil)
 	if err != nil {
-		return false, fmt.Errorf("failed to create request: %w", err)
+		if strings.Contains(err.Error(), "status code: 400") {
+			return false, nil
+		}
+		return false, err
 	}
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return false, fmt.Errorf("failed to validate address with Blockstream: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == 400 {
-		// Invalid address format
-		return false, nil
-	}
-
-	if resp.StatusCode != 200 {
-		body, _ := io.ReadAll(resp.Body)
-		return false, fmt.Errorf("blockstream API error: %d - %s", resp.StatusCode, string(body))
-	}
-
-	// If we get a 200 response, the address is valid
 	return true, nil
 }
 

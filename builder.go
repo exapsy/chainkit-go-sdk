@@ -5,7 +5,6 @@ package chainkit
 type MixedProvidersBuilder struct {
 	addressGenerators *ProviderManager
 	addressValidators *ProviderManager
-	txMonitors        *ProviderManager
 	feeEstimators     *ProviderManager
 	feeRecommenders   *ProviderManager
 	txBroadcasters    *ProviderManager
@@ -557,7 +556,6 @@ func (b *MixedProvidersBuilder) Build() BlockchainProvider {
 	return &MixedProviders{
 		addressGenerators: b.addressGenerators,
 		addressValidators: b.addressValidators,
-		txMonitors:        b.txMonitors,
 		feeRecommenders:   b.feeRecommenders,
 		feeEstimators:     b.feeEstimators,
 		txBroadcasters:    b.txBroadcasters,

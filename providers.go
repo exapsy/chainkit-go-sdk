@@ -2,7 +2,6 @@ package chainkit
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/exapsy/chainkit/bitcoin/types"
 )
@@ -11,7 +10,6 @@ import (
 type MixedProviders struct {
 	addressGenerators *ProviderManager
 	addressValidators *ProviderManager
-	txMonitors        *ProviderManager
 	feeEstimators     *ProviderManager
 	feeRecommenders   *ProviderManager
 	txBroadcasters    *ProviderManager
@@ -39,10 +37,6 @@ func executeWithFallbackAndMetrics[ResultT any](
 ) (ResultT, error) {
 	var zero ResultT
 
-	if len(manager.GetAvailableProviders()) == 0 {
-		return zero, fmt.Errorf("%w: no provider registered for %s", ErrProviderNotConfigured, operation)
-	}
-
 	result, providerName, duration, err := manager.RunOp(ctx, func(ctx context.Context, provider interface{}) (interface{}, error) { return fn(provider) })
 	metricsRecorder.RecordBlockchainRequest(ctx, providerName, operation, err == nil, duration)
 	if err != nil {
@@ -63,10 +57,6 @@ func executeWithFallbackAndMetricsWithContext[ResultT any](
 ) (context.Context, ResultT, error) {
 	var zero ResultT
 
-	if len(manager.GetAvailableProviders()) == 0 {
-		return ctx, zero, fmt.Errorf("%w: no provider registered for %s", ErrProviderNotConfigured, operation)
-	}
-
 	result, providerName, duration, err := manager.RunOp(ctx, func(ctx context.Context, provider interface{}) (interface{}, error) { return fn(provider) })
 	ctx = WithProviderName(ctx, providerName)
 	metricsRecorder.RecordBlockchainRequest(ctx, providerName, operation, err == nil, duration)
@@ -83,7 +73,6 @@ func (m *MixedProviders) ProviderExists(name string) bool {
 	for _, manager := range []*ProviderManager{
 		m.addressGenerators,
 		m.addressValidators,
-		m.txMonitors,
 		m.feeEstimators,
 		m.feeRecommenders,
 		m.txBroadcasters,

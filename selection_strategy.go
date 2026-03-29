@@ -84,7 +84,7 @@ func (s *roundRobinSelector) SelectProviders(available []ProviderConfig) []Provi
 			result = append(result, group[0])
 		} else {
 			// Multiple providers at this priority - apply round-robin
-			currentIndex := s.priorityIndexes[priority]
+			currentIndex := s.priorityIndexes[priority] % len(group)
 
 			// Rotate the group based on current index
 			rotated := make([]ProviderConfig, len(group))

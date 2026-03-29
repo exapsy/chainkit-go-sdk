@@ -194,6 +194,21 @@ func (p *metal) SignTransaction(
 		wireTx.AddTxOut(txOut)
 	}
 
+	// Derive ScriptPubKey from Address when not provided by the UTXO source.
+	for i := range utxos {
+		if utxos[i].ScriptPubKey == nil && utxos[i].Address != "" {
+			addr, addrErr := btcutil.DecodeAddress(utxos[i].Address, netParams)
+			if addrErr != nil {
+				return nil, fmt.Errorf("UTXO %d: cannot derive ScriptPubKey from address %q: %w", i, utxos[i].Address, addrErr)
+			}
+			script, scriptErr := txscript.PayToAddrScript(addr)
+			if scriptErr != nil {
+				return nil, fmt.Errorf("UTXO %d: failed to build ScriptPubKey for %q: %w", i, utxos[i].Address, scriptErr)
+			}
+			utxos[i].ScriptPubKey = script
+		}
+	}
+
 	// Create a PrevOutputFetcher for the updated NewTxSigHashes function
 	prevOuts := make(map[wire.OutPoint]*wire.TxOut)
 

@@ -2,6 +2,7 @@ package providers
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
@@ -64,10 +65,15 @@ func (p *blockcypher) GetUTXOs(ctx context.Context, address string) ([]types.UTX
 
 	utxos := make([]types.UTXO, 0, len(addr.TXRefs))
 	for _, txRef := range addr.TXRefs {
+		scriptBytes, _ := hex.DecodeString(txRef.Script)
 		utxos = append(utxos, types.UTXO{
-			TxHash:    txRef.TXHash,
-			Amount:    txRef.Value.Int64(),
-			Confirmed: txRef.Confirmations > 0,
+			TxHash:        txRef.TXHash,
+			Vout:          uint32(txRef.TXOutputN),
+			Amount:        txRef.Value.Int64(),
+			Confirmed:     txRef.Confirmations > 0,
+			Confirmations: int64(txRef.Confirmations),
+			ScriptPubKey:  scriptBytes,
+			Address:       address,
 		})
 	}
 

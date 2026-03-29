@@ -272,7 +272,7 @@ func (pm *ProviderManager) RunOp(ctx context.Context, op func(ctx context.Contex
 	// GetAvailableProviders already filters out circuit-open / rate-limited providers.
 	providers := pm.GetAvailableProviders()
 	if len(providers) == 0 {
-		return nil, "", 0, fmt.Errorf("no available providers")
+		return nil, "", 0, fmt.Errorf("%w: no available providers", ErrProviderNotConfigured)
 	}
 
 	// Narrow to a single provider if one is pinned — either via context or via

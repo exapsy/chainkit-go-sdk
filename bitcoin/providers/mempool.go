@@ -65,9 +65,13 @@ type mempoolPricesResponse struct {
 
 // fetchPrice fetches the BTC price in the given currency directly from the
 // mempool.space /v1/prices endpoint (stdlib only, no external package).
-func (m *mempoolProvider) fetchPrice(currency string) (float64, error) {
+func (m *mempoolProvider) fetchPrice(ctx context.Context, currency string) (float64, error) {
 	url := m.baseURL + "/v1/prices"
-	resp, err := m.httpClient.Get(url)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create prices request: %w", err)
+	}
+	resp, err := m.httpClient.Do(req)
 	if err != nil {
 		return 0, fmt.Errorf("failed to fetch prices: %w", err)
 	}
@@ -110,7 +114,7 @@ func (s *mempoolProvider) GetExchangeRates(
 
 	switch coin {
 	case types.CoinTickerBTC:
-		price, err := s.fetchPrice("USD")
+		price, err := s.fetchPrice(ctx, "USD")
 		if err != nil {
 			return nil, &types.RequestError{
 				Err:     err,
@@ -142,7 +146,7 @@ func (s *mempoolProvider) GetExchangeRate(
 
 	switch coin {
 	case types.CoinTickerBTC:
-		price, err := s.fetchPrice(currency.String())
+		price, err := s.fetchPrice(ctx, currency.String())
 		if err != nil {
 			return nil, &types.RequestError{
 				Err:     err,
@@ -173,7 +177,7 @@ func (s *mempoolProvider) ConvertCoin(
 ) (*big.Float, error) {
 	switch from {
 	case types.CoinTickerBTC:
-		btcExchangeRate, err := s.fetchPrice(to.String())
+		btcExchangeRate, err := s.fetchPrice(ctx, to.String())
 		if err != nil {
 			return nil, err
 		}

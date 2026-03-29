@@ -28,7 +28,7 @@ const (
 
 func (n BitcoinNetwork) IsValid() bool {
 	switch n {
-	case BitcoinNetworkMainnet, BitcoinNetworkTestnet3, BitcoinNetworkRegtest:
+	case BitcoinNetworkMainnet, BitcoinNetworkTestnet3, BitcoinNetworkTestnet4, BitcoinNetworkRegtest, BitcoinNetworkSimnet:
 		return true
 	default:
 		return false
@@ -214,7 +214,7 @@ type UTXOSet struct {
 	Total int64   `json:"total"`
 }
 
-func (us *UTXOSet) Select(targetAmount, feeRate int64) ([]UTXO, int64, error) {
+func (us *UTXOSet) Select(targetAmount int64) ([]UTXO, int64, error) {
 	// Select minimum amount of UTXOs to meet target amount and fee rate
 	selectedUTXOs := make([]UTXO, 0)
 	changeAmount := int64(0)

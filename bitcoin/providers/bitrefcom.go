@@ -28,8 +28,9 @@ type BitrefcomProvider interface {
 }
 
 type Bitrefcom struct {
-	apiKey  string
-	baseURL string
+	apiKey     string
+	baseURL    string
+	httpClient *http.Client
 }
 
 type BitrefcomParams struct {
@@ -56,8 +57,9 @@ func NewBitrefcom(params BitrefcomParams, opts *BitrefcomOptions) BitrefcomProvi
 	}
 
 	return &Bitrefcom{
-		apiKey:  params.APIKey,
-		baseURL: baseURL,
+		apiKey:     params.APIKey,
+		baseURL:    baseURL,
+		httpClient: &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
@@ -95,9 +97,7 @@ func (b *Bitrefcom) callAPI(
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	client := &http.Client{}
-
-	resp, err := client.Do(req)
+	resp, err := b.httpClient.Do(req)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -148,8 +148,12 @@ func (b *Bitrefcom) GetTxFee(ctx context.Context, feeTier int) (types.FeeTier, e
 		return types.FeeTier{}, err
 	}
 
+	feeRate := uint64(math.Round(resp.FeeRate))
+	if feeRate < 1 {
+		feeRate = 1
+	}
 	return types.FeeTier{
-		FeeRate:     uint64(resp.FeeRate), // FeeRate in sat/vB
+		FeeRate:     feeRate,
 		TargetBlock: resp.Blocks,
 	}, nil
 }

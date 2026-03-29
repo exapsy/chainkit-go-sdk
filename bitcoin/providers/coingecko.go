@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/big"
 	"net/http"
 	"strings"
@@ -24,6 +25,7 @@ type CoinGeckoService interface {
 
 type coingecko struct {
 	coinGeckoBaseURL string
+	httpClient       *http.Client
 }
 
 type CoingeckoOptions struct {
@@ -43,6 +45,7 @@ func NewCoingecko(options *CoingeckoOptions) CoinGeckoService {
 
 	return &coingecko{
 		coinGeckoBaseURL: options.CoinGeckoBaseURL,
+		httpClient:       &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
@@ -59,19 +62,21 @@ func (s *coingecko) GetExchangeRates(
 	url := s.coinGeckoBaseURL + "/simple/price?ids=" + coin.CoingeckoString() +
 		"&vs_currencies=usd,eur,gbp,jpy,aud,cad,chf,cny,krw,brl,sgd,sek,nzd,hkd,nok,pln,zar,rub,try"
 
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	client := &http.Client{}
-
-	resp, err := client.Do(req)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
-
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("CoinGecko API returned status %d: %s", resp.StatusCode, string(body))
+	}
 
 	// map[coin][currency]float64
 	type Response map[string]map[string]float64
@@ -125,19 +130,21 @@ func (s *coingecko) GetExchangeRate(
 		coin.CoingeckoString(),
 	) + "&vs_currencies=" + currency.String()
 
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	client := &http.Client{}
-
-	resp, err := client.Do(req)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
-
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("CoinGecko API returned status %d: %s", resp.StatusCode, string(body))
+	}
 
 	// CoinGecko response: {"bitcoin": {"usd": 67432.89}}
 	priceMap := make(map[string]map[string]float64)
