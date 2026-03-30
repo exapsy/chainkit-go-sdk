@@ -15,7 +15,6 @@ import (
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/exapsy/chainkit"
 	"github.com/exapsy/chainkit/bitcoin/types"
-	"github.com/exapsy/chainkit/payment"
 )
 
 type MempoolProvider interface {
@@ -165,32 +164,6 @@ func (s *mempoolProvider) GetExchangeRate(
 	default:
 		return nil, &types.CoinNotSupportedError{
 			Coin: coin.BlockchainString(),
-		}
-	}
-}
-
-func (s *mempoolProvider) ConvertCoin(
-	ctx context.Context,
-	amountSatoshis *big.Int,
-	from types.CoinTicker,
-	to types.Currency,
-) (*big.Float, error) {
-	switch from {
-	case types.CoinTickerBTC:
-		btcExchangeRate, err := s.fetchPrice(ctx, to.String())
-		if err != nil {
-			return nil, err
-		}
-
-		btc, err := payment.ConvertSatoshisToBitcoin(amountSatoshis)
-		if err != nil {
-			return nil, err
-		}
-
-		return btc.Mul(btc, big.NewFloat(btcExchangeRate)), nil
-	default:
-		return nil, &types.CoinNotSupportedError{
-			Coin: from.BlockchainString(),
 		}
 	}
 }
@@ -375,18 +348,14 @@ func (m *mempoolProvider) GetTxFees(ctx context.Context) ([]types.FeeTier, error
 	}, nil
 }
 
-// GetTxFee returns a specific fee tier
-func (m *mempoolProvider) GetTxFee(ctx context.Context, feeTier int) (types.FeeTier, error) {
+// GetTxFee returns the fee tier that best matches the requested priority.
+func (m *mempoolProvider) GetTxFee(ctx context.Context, priority types.FeePriority) (types.FeeTier, error) {
 	fees, err := m.GetTxFees(ctx)
 	if err != nil {
 		return types.FeeTier{}, err
 	}
 
-	if feeTier < 0 || feeTier >= len(fees) {
-		return types.FeeTier{}, fmt.Errorf("invalid fee tier: %d", feeTier)
-	}
-
-	return fees[feeTier], nil
+	return priority.SelectClosest(fees), nil
 }
 
 // PushTx broadcasts a signed transaction to the network

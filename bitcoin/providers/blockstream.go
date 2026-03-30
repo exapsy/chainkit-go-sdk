@@ -490,19 +490,15 @@ func (p *blockstream) GetTxFees(ctx context.Context) ([]types.FeeTier, error) {
 	return feeTiers, nil
 }
 
-// GetTxFee implements FeeRecommender interface
-// Returns a specific fee tier by index
-func (p *blockstream) GetTxFee(ctx context.Context, feeTier int) (types.FeeTier, error) {
+// GetTxFee implements FeeRecommender interface.
+// Returns the fee tier that best matches the requested priority.
+func (p *blockstream) GetTxFee(ctx context.Context, priority types.FeePriority) (types.FeeTier, error) {
 	fees, err := p.GetTxFees(ctx)
 	if err != nil {
 		return types.FeeTier{}, err
 	}
 
-	if feeTier < 0 || feeTier >= len(fees) {
-		return types.FeeTier{}, fmt.Errorf("invalid fee tier: %d (available: 0-%d)", feeTier, len(fees)-1)
-	}
-
-	return fees[feeTier], nil
+	return priority.SelectClosest(fees), nil
 }
 
 // GetCapabilities returns the list of capabilities this provider supports

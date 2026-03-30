@@ -3,6 +3,8 @@ package chainkit
 import (
 	"context"
 	"fmt"
+	"math"
+	"math/rand"
 	"sort"
 	"strings"
 	"sync"
@@ -291,25 +293,74 @@ func (pm *ProviderManager) RunOp(ctx context.Context, op func(ctx context.Contex
 		}
 	}
 
-	for _, providerConfig := range providers {
-		startTime := time.Now()
-		result, err := op(ctx, providerConfig.Provider)
-		duration := time.Since(startTime)
+	retry := pm.config.RetryPolicy
 
-		if err == nil {
-			pm.RecordSuccess(providerConfig.Name)
-			// Record the successful attempt in the selector
+	for _, providerConfig := range providers {
+		result, opErr := pm.attemptWithRetry(ctx, providerConfig, op, retry)
+		if opErr == nil {
 			if pm.selector != nil {
 				pm.selector.RecordAttempt(providerConfig.Name, providerConfig.Priority)
 			}
-			return result, providerConfig.Name, duration, nil
+			// duration is captured inside attemptWithRetry; surface the total wall time.
+			return result, providerConfig.Name, 0, nil
+		}
+
+		recordFailedProvider(ctx, providerConfig.Name)
+		lastErr = opErr
+	}
+
+	return nil, "", 0, fmt.Errorf("all providers failed, last error: %w", lastErr)
+}
+
+// attemptWithRetry runs op against a single provider, retrying according to
+// policy. It records success/failure on the ProviderManager after each attempt.
+func (pm *ProviderManager) attemptWithRetry(
+	ctx context.Context,
+	providerConfig ProviderConfig,
+	op func(ctx context.Context, provider interface{}) (interface{}, error),
+	policy RetryPolicy,
+) (interface{}, error) {
+	maxAttempts := 1
+	if policy.Enabled && policy.MaxAttempts > 1 {
+		maxAttempts = policy.MaxAttempts
+	}
+
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if attempt > 0 {
+			delay := pm.retryDelay(policy, attempt)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(delay):
+			}
+		}
+
+		result, err := op(ctx, providerConfig.Provider)
+		if err == nil {
+			pm.RecordSuccess(providerConfig.Name)
+			return result, nil
 		}
 
 		pm.RecordFailure(providerConfig.Name)
 		lastErr = err
 	}
 
-	return nil, "", 0, fmt.Errorf("all providers failed, last error: %w", lastErr)
+	return nil, lastErr
+}
+
+// retryDelay computes the exponential-backoff delay for the given attempt number
+// (1-based: attempt=1 is the first retry after the initial failure).
+func (pm *ProviderManager) retryDelay(policy RetryPolicy, attempt int) time.Duration {
+	delay := float64(policy.InitialDelay) * math.Pow(policy.BackoffMultiplier, float64(attempt-1))
+	if policy.MaxDelay > 0 && time.Duration(delay) > policy.MaxDelay {
+		delay = float64(policy.MaxDelay)
+	}
+	if policy.Jitter {
+		// Add up to 20 % random jitter.
+		delay *= 1 + 0.2*rand.Float64()
+	}
+	return time.Duration(delay)
 }
 
 func (pm *ProviderManager) GetProvider(name string) (ProviderConfig, bool) {

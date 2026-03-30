@@ -26,7 +26,7 @@
 //	    WithUTXOFetcherChain(chainkit.UTXOFetcherConfig{Fetcher: mempool, Priority: 1}).
 //	    WithRateFetcherChain(chainkit.RateFetcherConfig{Fetcher: mempool, Priority: 1}).
 //	    WithTxBroadcasterChain(chainkit.TxBroadcasterConfig{Broadcaster: mempool, Priority: 1}).
-//	    WithTxStatusFetcher(mempool).
+//	    WithTxStatusFetcherChain(chainkit.TxStatusFetcherConfig{Fetcher: mempool, Priority: 1}).
 //	    Build()
 //
 // Not all roles are required. Only register the capabilities you actually use.
@@ -94,7 +94,9 @@ type AddressGenerator interface {
 // Use [FeeEstimator] to compute the actual fee amount for a given transaction size.
 type FeeRecommender interface {
 	GetTxFees(ctx context.Context) ([]types.FeeTier, error)
-	GetTxFee(ctx context.Context, feeTier int) (types.FeeTier, error)
+	// GetTxFee returns the fee tier that best matches the requested priority.
+	// Each provider adapter maps the named priority to its own internal API.
+	GetTxFee(ctx context.Context, priority types.FeePriority) (types.FeeTier, error)
 }
 
 // FeeEstimator calculates the fee amount (in satoshis) for a transaction of a given

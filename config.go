@@ -173,3 +173,10 @@ type UTXOFetcherConfig struct {
 	Name        string       // Optional - if empty, will be derived from Fetcher.Name()
 	ChainConfig *ChainConfig // Optional - if provided, will be applied to the chain
 }
+
+type TxStatusFetcherConfig struct {
+	Fetcher     TxStatusFetcher
+	Priority    int
+	Name        string       // Optional - if empty, will be derived from Fetcher.Name()
+	ChainConfig *ChainConfig // Optional - if provided, will be applied to the chain
+}

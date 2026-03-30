@@ -135,6 +135,70 @@ type FeeTier struct {
 	TargetBlock int `json:"target_block"`
 }
 
+// FeePriority is a named confirmation-speed preference. Each provider adapter
+// maps a FeePriority to its own internal representation (e.g. a block target
+// or a named tier).
+type FeePriority int
+
+const (
+	// FeePriorityFastest targets the next block (~10 min).
+	FeePriorityFastest FeePriority = iota
+	// FeePriorityFast targets confirmation within ~30 min (≈3 blocks).
+	FeePriorityFast
+	// FeePriorityMedium targets confirmation within ~1 hour (≈6 blocks).
+	FeePriorityMedium
+	// FeePrioritySlow targets confirmation within ~1 day (≈144 blocks).
+	FeePrioritySlow
+	// FeePriorityMinimum is the cheapest possible fee (≈1008 blocks, ~1 week).
+	FeePriorityMinimum
+)
+
+// TargetBlock returns the canonical block-target associated with this priority.
+func (p FeePriority) TargetBlock() int {
+	switch p {
+	case FeePriorityFastest:
+		return 1
+	case FeePriorityFast:
+		return 3
+	case FeePriorityMedium:
+		return 6
+	case FeePrioritySlow:
+		return 144
+	case FeePriorityMinimum:
+		return 1008
+	default:
+		return 6
+	}
+}
+
+// SelectClosest picks the FeeTier from tiers whose TargetBlock is closest to
+// p.TargetBlock(). Returns the zero value if tiers is empty.
+func (p FeePriority) SelectClosest(tiers []FeeTier) FeeTier {
+	if len(tiers) == 0 {
+		return FeeTier{}
+	}
+
+	target := p.TargetBlock()
+	best := tiers[0]
+	bestDiff := abs(best.TargetBlock - target)
+
+	for _, t := range tiers[1:] {
+		if d := abs(t.TargetBlock - target); d < bestDiff {
+			bestDiff = d
+			best = t
+		}
+	}
+
+	return best
+}
+
+func abs(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
 type TxStatus struct {
 	Status string `json:"status"`
 }

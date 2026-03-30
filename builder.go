@@ -86,71 +86,9 @@ func (b *MixedProvidersBuilder) WithMetricsRecorder(recorder MetricsRecorder) *M
 	return b
 }
 
-func (b *MixedProvidersBuilder) AddAddressGenerator(generator AddressGenerator, priority int, name string) *MixedProvidersBuilder {
-	b.addressGenerators.AddProvider(generator, priority, name)
-	return b
-}
-
-func (b *MixedProvidersBuilder) AddFeeRecommender(recommender FeeRecommender, priority int, name string) *MixedProvidersBuilder {
-	b.feeRecommenders.AddProvider(recommender, priority, name)
-	return b
-}
-
-func (b *MixedProvidersBuilder) AddFeeEstimator(estimator FeeEstimator, priority int, name string) *MixedProvidersBuilder {
-	b.feeEstimators.AddProvider(estimator, priority, name)
-	return b
-}
-
-func (b *MixedProvidersBuilder) AddTxBroadcaster(broadcaster TxBroadcaster, priority int, name string) *MixedProvidersBuilder {
-	b.txBroadcasters.AddProvider(broadcaster, priority, name)
-	return b
-}
-
-func (b *MixedProvidersBuilder) AddTxAssembler(assembler TxAssembler, priority int, name string) *MixedProvidersBuilder {
-	b.txAssemblers.AddProvider(assembler, priority, name)
-	return b
-}
-
-func (b *MixedProvidersBuilder) AddTxSizer(sizer TxSizer, priority int, name string) *MixedProvidersBuilder {
-	b.txSizers.AddProvider(sizer, priority, name)
-	return b
-}
-
-func (b *MixedProvidersBuilder) AddTxSigner(signer TxSigner, priority int, name string) *MixedProvidersBuilder {
-	b.txSigners.AddProvider(signer, priority, name)
-	return b
-}
-
-func (b *MixedProvidersBuilder) AddUTXOFetcher(fetcher UTXOFetcher, priority int, name string) *MixedProvidersBuilder {
-	b.utxoFetchers.AddProvider(fetcher, priority, name)
-	return b
-}
-
-func (b *MixedProvidersBuilder) AddBalanceFetcher(fetcher BalanceFetcher, priority int, name string) *MixedProvidersBuilder {
-	b.balanceFetchers.AddProvider(fetcher, priority, name)
-	return b
-}
-
-func (b *MixedProvidersBuilder) AddRateFetcher(fetcher RateFetcher, priority int, name string) *MixedProvidersBuilder {
-	b.rateFetchers.AddProvider(fetcher, priority, name)
-	return b
-}
-
-func (b *MixedProvidersBuilder) AddTxStatusFetcher(fetcher TxStatusFetcher, priority int, name string) *MixedProvidersBuilder {
-	b.txStatusFetchers.AddProvider(fetcher, priority, name)
-	return b
-}
-
-func (b *MixedProvidersBuilder) AddAddressValidator(validator AddressValidator, priority int, name string) *MixedProvidersBuilder {
-	b.addressValidators.AddProvider(validator, priority, name)
-	return b
-}
-
-// WithBalanceFetcherChain adds a chain of BalanceFetchers to the builder
 func (b *MixedProvidersBuilder) WithBalanceFetcherChain(fetchers ...BalanceFetcherConfig) *MixedProvidersBuilder {
 	chainConfigApplied := false
 	for _, fetcher := range fetchers {
-		// Skip nil fetchers to prevent panics
 		if fetcher.Fetcher == nil {
 			continue
 		}
@@ -177,7 +115,6 @@ func (b *MixedProvidersBuilder) WithBalanceFetcherChain(fetchers ...BalanceFetch
 func (b *MixedProvidersBuilder) WithRateFetcherChain(fetchers ...RateFetcherConfig) *MixedProvidersBuilder {
 	chainConfigApplied := false
 	for _, fetcher := range fetchers {
-		// Skip nil fetchers to prevent panics
 		if fetcher.Fetcher == nil {
 			continue
 		}
@@ -204,7 +141,6 @@ func (b *MixedProvidersBuilder) WithRateFetcherChain(fetchers ...RateFetcherConf
 func (b *MixedProvidersBuilder) WithAddressGeneratorChain(generators ...AddressGeneratorConfig) *MixedProvidersBuilder {
 	chainConfigApplied := false
 	for _, generator := range generators {
-		// Skip nil generators to prevent panics
 		if generator.Generator == nil {
 			continue
 		}
@@ -256,17 +192,9 @@ func (b *MixedProvidersBuilder) WithFeeRecommenderChain(recommenders ...FeeRecom
 	return b
 }
 
-// WithFeeFetcherChain is an alias for [WithFeeRecommenderChain] using the old config type.
-//
-// Deprecated: use [WithFeeRecommenderChain] with [FeeRecommenderConfig] instead.
-func (b *MixedProvidersBuilder) WithFeeFetcherChain(fetchers ...FeeRecommenderConfig) *MixedProvidersBuilder {
-	return b.WithFeeRecommenderChain(fetchers...)
-}
-
 func (b *MixedProvidersBuilder) WithFeeEstimatorChain(estimators ...FeeEstimatorConfig) *MixedProvidersBuilder {
 	chainConfigApplied := false
 	for _, estimator := range estimators {
-		// Skip nil estimators to prevent panics
 		if estimator.Estimator == nil {
 			continue
 		}
@@ -293,7 +221,6 @@ func (b *MixedProvidersBuilder) WithFeeEstimatorChain(estimators ...FeeEstimator
 func (b *MixedProvidersBuilder) WithTxBroadcasterChain(broadcasters ...TxBroadcasterConfig) *MixedProvidersBuilder {
 	chainConfigApplied := false
 	for _, broadcaster := range broadcasters {
-		// Skip nil broadcasters to prevent panics
 		if broadcaster.Broadcaster == nil {
 			continue
 		}
@@ -320,7 +247,6 @@ func (b *MixedProvidersBuilder) WithTxBroadcasterChain(broadcasters ...TxBroadca
 func (b *MixedProvidersBuilder) WithTxAssemblerChain(assemblers ...TxAssemblerConfig) *MixedProvidersBuilder {
 	chainConfigApplied := false
 	for _, assembler := range assemblers {
-		// Skip nil assemblers to prevent panics
 		if assembler.Assembler == nil {
 			continue
 		}
@@ -347,7 +273,6 @@ func (b *MixedProvidersBuilder) WithTxAssemblerChain(assemblers ...TxAssemblerCo
 func (b *MixedProvidersBuilder) WithTxSizerChain(sizers ...TxSizerConfig) *MixedProvidersBuilder {
 	chainConfigApplied := false
 	for _, sizer := range sizers {
-		// Skip nil sizers to prevent panics
 		if sizer.Sizer == nil {
 			continue
 		}
@@ -374,7 +299,6 @@ func (b *MixedProvidersBuilder) WithTxSizerChain(sizers ...TxSizerConfig) *Mixed
 func (b *MixedProvidersBuilder) WithTxSignerChain(signers ...TxSignerConfig) *MixedProvidersBuilder {
 	chainConfigApplied := false
 	for _, signer := range signers {
-		// Skip nil signers to prevent panics
 		if signer.Signer == nil {
 			continue
 		}
@@ -401,7 +325,6 @@ func (b *MixedProvidersBuilder) WithTxSignerChain(signers ...TxSignerConfig) *Mi
 func (b *MixedProvidersBuilder) WithUTXOFetcherChain(fetchers ...UTXOFetcherConfig) *MixedProvidersBuilder {
 	chainConfigApplied := false
 	for _, fetcher := range fetchers {
-		// Skip nil fetchers to prevent panics
 		if fetcher.Fetcher == nil {
 			continue
 		}
@@ -428,7 +351,6 @@ func (b *MixedProvidersBuilder) WithUTXOFetcherChain(fetchers ...UTXOFetcherConf
 func (b *MixedProvidersBuilder) WithAddressValidatorChain(validators ...AddressValidatorConfig) *MixedProvidersBuilder {
 	chainConfigApplied := false
 	for _, validator := range validators {
-		// Skip nil validators to prevent panics
 		if validator.Validator == nil {
 			continue
 		}
@@ -452,99 +374,30 @@ func (b *MixedProvidersBuilder) WithAddressValidatorChain(validators ...AddressV
 	return b
 }
 
-// WithAddressGenerator registers a single [AddressGenerator] at priority 1.
-//
-// Deprecated: use [WithAddressGeneratorChain] with [AddressGeneratorConfig] for explicit
-// priority control and per-provider chain configuration.
-func (b *MixedProvidersBuilder) WithAddressGenerator(generator AddressGenerator) *MixedProvidersBuilder {
-	return b.AddAddressGenerator(generator, 1, "default")
-}
+func (b *MixedProvidersBuilder) WithTxStatusFetcherChain(fetchers ...TxStatusFetcherConfig) *MixedProvidersBuilder {
+	chainConfigApplied := false
+	for _, fetcher := range fetchers {
+		if fetcher.Fetcher == nil {
+			continue
+		}
 
-// WithFeeRecommender registers a single [FeeRecommender] at priority 1.
-//
-// Deprecated: use [WithFeeRecommenderChain] with [FeeRecommenderConfig] for explicit
-// priority control and per-provider chain configuration.
-func (b *MixedProvidersBuilder) WithFeeRecommender(recommender FeeRecommender) *MixedProvidersBuilder {
-	return b.AddFeeRecommender(recommender, 1, "default")
-}
+		name := fetcher.Name
+		if name == "" {
+			if named, ok := fetcher.Fetcher.(BlockchainBaseProvider); ok {
+				name = named.Name()
+			} else {
+				name = "unknown"
+			}
+		}
 
-// WithFeeEstimator registers a single [FeeEstimator] at priority 1.
-//
-// Deprecated: use [WithFeeEstimatorChain] with [FeeEstimatorConfig] for explicit
-// priority control and per-provider chain configuration.
-func (b *MixedProvidersBuilder) WithFeeEstimator(estimator FeeEstimator) *MixedProvidersBuilder {
-	return b.AddFeeEstimator(estimator, 1, "default")
-}
+		if fetcher.ChainConfig != nil && !chainConfigApplied {
+			b.txStatusFetchers.UpdateChainConfig(*fetcher.ChainConfig)
+			chainConfigApplied = true
+		}
 
-// WithTxBroadcaster registers a single [TxBroadcaster] at priority 1.
-//
-// Deprecated: use [WithTxBroadcasterChain] with [TxBroadcasterConfig] for explicit
-// priority control and per-provider chain configuration.
-func (b *MixedProvidersBuilder) WithTxBroadcaster(broadcaster TxBroadcaster) *MixedProvidersBuilder {
-	return b.AddTxBroadcaster(broadcaster, 1, "default")
-}
-
-// WithTxAssembler registers a single [TxAssembler] at priority 1.
-//
-// Deprecated: use [WithTxAssemblerChain] with [TxAssemblerConfig] for explicit
-// priority control and per-provider chain configuration.
-func (b *MixedProvidersBuilder) WithTxAssembler(assembler TxAssembler) *MixedProvidersBuilder {
-	return b.AddTxAssembler(assembler, 1, "default")
-}
-
-// WithTxSizer registers a single [TxSizer] at priority 1.
-//
-// Deprecated: use [WithTxSizerChain] with [TxSizerConfig] for explicit
-// priority control and per-provider chain configuration.
-func (b *MixedProvidersBuilder) WithTxSizer(sizer TxSizer) *MixedProvidersBuilder {
-	return b.AddTxSizer(sizer, 1, "default")
-}
-
-// WithTxSigner registers a single [TxSigner] at priority 1.
-//
-// Deprecated: use [WithTxSignerChain] with [TxSignerConfig] for explicit
-// priority control and per-provider chain configuration.
-func (b *MixedProvidersBuilder) WithTxSigner(signer TxSigner) *MixedProvidersBuilder {
-	return b.AddTxSigner(signer, 1, "default")
-}
-
-// WithUTXOFetcher registers a single [UTXOFetcher] at priority 1.
-//
-// Deprecated: use [WithUTXOFetcherChain] with [UTXOFetcherConfig] for explicit
-// priority control and per-provider chain configuration.
-func (b *MixedProvidersBuilder) WithUTXOFetcher(fetcher UTXOFetcher) *MixedProvidersBuilder {
-	return b.AddUTXOFetcher(fetcher, 1, "default")
-}
-
-// WithBalanceFetcher registers a single [BalanceFetcher] at priority 1.
-//
-// Deprecated: use [WithBalanceFetcherChain] with [BalanceFetcherConfig] for explicit
-// priority control and per-provider chain configuration.
-func (b *MixedProvidersBuilder) WithBalanceFetcher(fetcher BalanceFetcher) *MixedProvidersBuilder {
-	return b.AddBalanceFetcher(fetcher, 1, "default")
-}
-
-// WithRateFetcher registers a single [RateFetcher] at priority 1.
-//
-// Deprecated: use [WithRateFetcherChain] with [RateFetcherConfig] for explicit
-// priority control and per-provider chain configuration.
-func (b *MixedProvidersBuilder) WithRateFetcher(fetcher RateFetcher) *MixedProvidersBuilder {
-	return b.AddRateFetcher(fetcher, 1, "default")
-}
-
-// WithAddressValidator registers a single [AddressValidator] at priority 1.
-//
-// Deprecated: use [WithAddressValidatorChain] with [AddressValidatorConfig] for explicit
-// priority control and per-provider chain configuration.
-func (b *MixedProvidersBuilder) WithAddressValidator(validator AddressValidator) *MixedProvidersBuilder {
-	return b.AddAddressValidator(validator, 1, "default")
-}
-
-// WithTxStatusFetcher registers a single [TxStatusFetcher] at priority 1.
-//
-// Deprecated: use a chain-registration method when multi-provider status checking is needed.
-func (b *MixedProvidersBuilder) WithTxStatusFetcher(fetcher TxStatusFetcher) *MixedProvidersBuilder {
-	return b.AddTxStatusFetcher(fetcher, 1, "default")
+		b.txStatusFetchers.AddProvider(fetcher.Fetcher, fetcher.Priority, name)
+	}
+	return b
 }
 
 // Build creates the final [MixedProviders] instance.

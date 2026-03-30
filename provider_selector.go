@@ -54,8 +54,8 @@ func (ps *ProviderSelector) GetTxFees(ctx context.Context) ([]types.FeeTier, err
 	return ps.mixedProvider.GetTxFees(ps.ctxWithProvider(ctx))
 }
 
-func (ps *ProviderSelector) GetTxFee(ctx context.Context, feeTier int) (types.FeeTier, error) {
-	return ps.mixedProvider.GetTxFee(ps.ctxWithProvider(ctx), feeTier)
+func (ps *ProviderSelector) GetTxFee(ctx context.Context, priority types.FeePriority) (types.FeeTier, error) {
+	return ps.mixedProvider.GetTxFee(ps.ctxWithProvider(ctx), priority)
 }
 
 func (ps *ProviderSelector) CalculateFee(ctx context.Context, txSize uint64, feePerByte uint64) (uint64, error) {

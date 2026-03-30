@@ -116,10 +116,10 @@ func (b *Bitrefcom) callAPI(
 	return responseBody, nil
 }
 
-func (b *Bitrefcom) GetTxFee(ctx context.Context, feeTier int) (types.FeeTier, error) {
+func (b *Bitrefcom) GetTxFee(ctx context.Context, priority types.FeePriority) (types.FeeTier, error) {
 	ctx = chainkit.WithProviderName(ctx, b.Name())
 
-	endpoint := fmt.Sprintf("/v1/fees/estimate/%d", feeTier)
+	endpoint := fmt.Sprintf("/v1/fees/estimate/%d", priority.TargetBlock())
 
 	body, err := b.callAPI(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {

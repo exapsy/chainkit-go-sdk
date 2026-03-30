@@ -103,9 +103,9 @@ func (m *MixedProviders) GetTxFees(ctx context.Context) ([]types.FeeTier, error)
 	})
 }
 
-func (m *MixedProviders) GetTxFee(ctx context.Context, feeTier int) (types.FeeTier, error) {
+func (m *MixedProviders) GetTxFee(ctx context.Context, priority types.FeePriority) (types.FeeTier, error) {
 	return executeWithFallbackAndMetrics(ctx, m.feeRecommenders, m.metricsRecorder, "GetTxFee", func(provider interface{}) (types.FeeTier, error) {
-		return provider.(FeeRecommender).GetTxFee(ctx, feeTier)
+		return provider.(FeeRecommender).GetTxFee(ctx, priority)
 	})
 }
 

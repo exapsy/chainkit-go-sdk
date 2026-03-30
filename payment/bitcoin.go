@@ -19,11 +19,14 @@ type BuildPaymentLinkOptions struct {
 	WalletAddress string
 	Coin          Coin
 	Amount        *big.Int
-	Label         string
-	Message       string
+	// Label is an optional human-readable label for the recipient (BIP21).
+	Label string
+	// Message is an optional human-readable description for the transaction (BIP21).
+	Message string
 }
 
 // BuildPaymentLink builds a BIP21 / coin-URI payment link.
+// Label and Message are optional; omit them by leaving the fields empty.
 func BuildPaymentLink(options BuildPaymentLinkOptions) (string, error) {
 	if options.Amount == nil {
 		return "", errors.New("amount cannot be nil")
@@ -33,51 +36,36 @@ func BuildPaymentLink(options BuildPaymentLinkOptions) (string, error) {
 		return "", errors.New("wallet public address cannot be empty")
 	}
 
-	if options.Label == "" {
-		return "", errors.New("label cannot be empty")
-	}
-
-	if options.Message == "" {
-		return "", errors.New("message cannot be empty")
-	}
-
 	switch options.Coin {
 	case BTC:
-		// Convert satoshis to BTC for the URI (divide by 100,000,000)
 		btcAmount := new(big.Float).Quo(new(big.Float).SetInt(options.Amount), big.NewFloat(1e8))
-
-		return fmt.Sprintf(
-			"bitcoin:%s?amount=%s&label=%s&message=%s",
-			options.WalletAddress,
-			btcAmount.Text('f', 8), // Format as decimal with 8 decimal places
-			url.QueryEscape(options.Label),
-			url.QueryEscape(options.Message),
-		), nil
+		uri := fmt.Sprintf("bitcoin:%s?amount=%s", options.WalletAddress, btcAmount.Text('f', 8))
+		uri = appendOptionalParam(uri, "label", options.Label)
+		uri = appendOptionalParam(uri, "message", options.Message)
+		return uri, nil
 	case ETH:
-		// Convert wei to ETH for the URI (divide by 10^18)
 		ethAmount := new(big.Float).Quo(new(big.Float).SetInt(options.Amount), big.NewFloat(1e18))
-
-		return fmt.Sprintf(
-			"ethereum:%s?amount=%s&label=%s&message=%s",
-			options.WalletAddress,
-			ethAmount.Text('f', 18),
-			url.QueryEscape(options.Label),
-			url.QueryEscape(options.Message),
-		), nil
+		uri := fmt.Sprintf("ethereum:%s?amount=%s", options.WalletAddress, ethAmount.Text('f', 18))
+		uri = appendOptionalParam(uri, "label", options.Label)
+		uri = appendOptionalParam(uri, "message", options.Message)
+		return uri, nil
 	case USDT:
-		// Convert smallest unit to USDT for the URI (divide by 10^6)
 		usdtAmount := new(big.Float).Quo(new(big.Float).SetInt(options.Amount), big.NewFloat(1e6))
-
-		return fmt.Sprintf(
-			"tether:%s?amount=%s&label=%s&message=%s",
-			options.WalletAddress,
-			usdtAmount.Text('f', 6),
-			url.QueryEscape(options.Label),
-			url.QueryEscape(options.Message),
-		), nil
+		uri := fmt.Sprintf("tether:%s?amount=%s", options.WalletAddress, usdtAmount.Text('f', 6))
+		uri = appendOptionalParam(uri, "label", options.Label)
+		uri = appendOptionalParam(uri, "message", options.Message)
+		return uri, nil
 	default:
 		return "", fmt.Errorf("unsupported coin: %s", options.Coin)
 	}
+}
+
+// appendOptionalParam appends &key=value to uri only when value is non-empty.
+func appendOptionalParam(uri, key, value string) string {
+	if value == "" {
+		return uri
+	}
+	return uri + "&" + key + "=" + url.QueryEscape(value)
 }
 
 // ConvertSatoshisToBitcoin converts a given amount of satoshis to Bitcoin.
