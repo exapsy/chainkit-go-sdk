@@ -12,8 +12,8 @@
 //	    "github.com/exapsy/chainkit/bitcoin/types"
 //	)
 //
-//	metal := providers.NewMetal(types.BitcoinNetworkMainnet)
-//	mempool := providers.NewMempool(types.BitcoinNetworkMainnet, "https://mempool.space/api")
+//	metal, _ := providers.NewMetal(providers.MetalProviderOptions{Network: types.BitcoinNetworkMainnet})
+//	mempool, _ := providers.NewMempool(providers.MempoolOptions{Network: types.BitcoinNetworkMainnet, BaseURL: "https://mempool.space/api"})
 //
 //	client := chainkit.NewMixedProvidersBuilder().
 //	    WithAddressGeneratorChain(chainkit.AddressGeneratorConfig{Generator: metal, Priority: 1}).
@@ -54,7 +54,8 @@ const (
 	ProviderNameKey contextKey = "provider_name"
 )
 
-// WithProviderName adds the provider name to the context.
+// WithProviderName embeds a preferred provider name into the context.
+// ProviderSelector will route the request to that provider if available.
 func WithProviderName(ctx context.Context, providerName string) context.Context {
 	return context.WithValue(ctx, ProviderNameKey, providerName)
 }
@@ -70,19 +71,11 @@ type AddressValidator interface {
 	ValidateAddress(ctx context.Context, address string) (bool, error)
 }
 
-// DerivedAddressMode indicates whether a derived address includes its private key.
-type DerivedAddressMode int
-
-const (
-	PublicKeyOnly      DerivedAddressMode = iota
-	PublicAndPrivateKey
-)
-
 // DerivedAddress holds the result of an HD-wallet address derivation.
+// PrivateKey is empty when the address was derived from a public key only.
 type DerivedAddress struct {
 	PublicKey  string
 	PrivateKey string
-	Mode       DerivedAddressMode
 }
 
 // AddressGenerator derives Bitcoin addresses from an extended public (or private) key.
@@ -130,8 +123,8 @@ type TxBroadcaster interface {
 	PushTx(ctx context.Context, rawTx []byte) (txID string, err error)
 }
 
-// TxStatusResponse contains transaction confirmation information.
-type TxStatusResponse struct {
+// TxConfirmationStatus contains transaction confirmation information.
+type TxConfirmationStatus struct {
 	Confirmed     bool
 	Confirmations int
 	BlockHeight   int64
@@ -140,20 +133,19 @@ type TxStatusResponse struct {
 
 // TxStatusFetcher checks the confirmation status of a transaction by its ID.
 type TxStatusFetcher interface {
-	GetTxStatus(ctx context.Context, txID string) (*TxStatusResponse, error)
+	GetTxStatus(ctx context.Context, txID string) (*TxConfirmationStatus, error)
 }
 
-// GetBalanceOptions allows callers to pass pre-fetched UTXOs to avoid a redundant
-// network round-trip when the UTXOs are already available.
-type GetBalanceOptions struct {
-	UTXOs []types.UTXO
+// Balance holds the confirmed, unconfirmed, and total balance for an address.
+type Balance struct {
+	Confirmed   uint64
+	Unconfirmed uint64
+	Total       uint64
 }
 
 // BalanceFetcher retrieves the balance for a Bitcoin address.
 type BalanceFetcher interface {
-	GetBalance(ctx context.Context, address string, opts *GetBalanceOptions) (uint64, error)
-	GetConfirmedBalance(ctx context.Context, address string) (uint64, error)
-	GetUnconfirmedBalance(ctx context.Context, address string) (uint64, error)
+	GetBalance(ctx context.Context, address string) (Balance, error)
 }
 
 // RateFetcher fetches fiat exchange rates for a cryptocurrency.
@@ -180,9 +172,18 @@ const (
 	CapabilityUTXOFetching       ProviderCapability = "utxo_fetching"
 )
 
+// HealthLevel is the typed status of a provider health check.
+type HealthLevel string
+
+const (
+	HealthLevelHealthy  HealthLevel = "healthy"
+	HealthLevelDegraded HealthLevel = "degraded"
+	HealthLevelDown     HealthLevel = "down"
+)
+
 // HealthStatus describes the current health of a provider.
 type HealthStatus struct {
-	Status         string    // "healthy", "degraded", or "down"
+	Status         HealthLevel
 	ResponseTimeMs int64
 	ResponseTimeUs int64
 	HTTPStatus     int
@@ -224,8 +225,4 @@ type BlockchainProvider interface {
 	RateFetcher
 	AddressValidator
 	TxStatusFetcher
-
-	// GetBalanceWithContext is like GetBalance but also returns the updated context
-	// carrying the name of the provider that served the request.
-	GetBalanceWithContext(ctx context.Context, address string, opts *GetBalanceOptions) (context.Context, uint64, error)
 }

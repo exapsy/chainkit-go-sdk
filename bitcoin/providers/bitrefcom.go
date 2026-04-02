@@ -33,32 +33,22 @@ type Bitrefcom struct {
 	httpClient *http.Client
 }
 
-type BitrefcomParams struct {
-	APIKey string
-}
-
 type BitrefcomOptions struct {
-	// BaseURL can be used to override the default API base URL.
+	APIKey string
+	// BaseURL overrides the default API base URL. Resolved by the caller from
+	// config/providers/bitrefcom.yaml for the active network. If empty, defaults
+	// to the mainnet API URL.
 	BaseURL string
 }
 
-// NewBitrefcom creates a new BitrefcomProvider. The BaseURL must be supplied
-// via opts, resolved by the caller from config/providers/bitrefcom.yaml for
-// the active network. If the network is not supported, the caller should not
-// construct this provider at all.
-func NewBitrefcom(params BitrefcomParams, opts *BitrefcomOptions) BitrefcomProvider {
-	if opts == nil {
-		opts = &BitrefcomOptions{}
-	}
-
-	baseURL := opts.BaseURL
-	if baseURL == "" {
-		baseURL = bitrefMainnetBaseURL
+func NewBitrefcom(opts BitrefcomOptions) BitrefcomProvider {
+	if opts.BaseURL == "" {
+		opts.BaseURL = bitrefMainnetBaseURL
 	}
 
 	return &Bitrefcom{
-		apiKey:     params.APIKey,
-		baseURL:    baseURL,
+		apiKey:     opts.APIKey,
+		baseURL:    opts.BaseURL,
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 	}
 }
@@ -117,7 +107,6 @@ func (b *Bitrefcom) callAPI(
 }
 
 func (b *Bitrefcom) GetTxFee(ctx context.Context, priority types.FeePriority) (types.FeeTier, error) {
-	ctx = chainkit.WithProviderName(ctx, b.Name())
 
 	endpoint := fmt.Sprintf("/v1/fees/estimate/%d", priority.TargetBlock())
 
@@ -155,7 +144,6 @@ func (b *Bitrefcom) GetTxFee(ctx context.Context, priority types.FeePriority) (t
 }
 
 func (b *Bitrefcom) GetTxFees(ctx context.Context) ([]types.FeeTier, error) {
-	ctx = chainkit.WithProviderName(ctx, b.Name())
 
 	endpoint := "/v1/fees/estimates"
 
@@ -206,7 +194,6 @@ func (b *Bitrefcom) GetTxFees(ctx context.Context) ([]types.FeeTier, error) {
 
 // PushTx broadcasts a raw transaction to the Bitcoin network.
 func (b *Bitrefcom) PushTx(ctx context.Context, rawTx []byte) (txID string, err error) {
-	ctx = chainkit.WithProviderName(ctx, b.Name())
 
 	endpoint := "/v1/tx/broadcast"
 
@@ -268,48 +255,18 @@ func (b *Bitrefcom) fetchBalanceData(ctx context.Context, address string) (*bala
 	return &resp, nil
 }
 
-func (b *Bitrefcom) GetBalance(ctx context.Context, address string, opts *chainkit.GetBalanceOptions) (uint64, error) {
-	ctx = chainkit.WithProviderName(ctx, b.Name())
-
-	// If UTXOs are provided, calculate balance from them
-	if opts != nil && len(opts.UTXOs) > 0 {
-		balance, err := getBalanceByUTXOs(opts.UTXOs)
-		if err != nil {
-			return 0, fmt.Errorf("failed to calculate balance from UTXOs: %w", err)
-		}
-
-		return balance, nil
-	}
-
+// GetBalance fetches balance data once and returns confirmed, unconfirmed, and total.
+func (b *Bitrefcom) GetBalance(ctx context.Context, address string) (chainkit.Balance, error) {
 	resp, err := b.fetchBalanceData(ctx, address)
 	if err != nil {
-		return 0, err
+		return chainkit.Balance{}, err
 	}
 
-	totalBalance := resp.ConfirmedBalance + resp.UnconfirmedBalance
-	return totalBalance, nil
-}
-
-func (b *Bitrefcom) GetConfirmedBalance(ctx context.Context, address string) (uint64, error) {
-	ctx = chainkit.WithProviderName(ctx, b.Name())
-
-	resp, err := b.fetchBalanceData(ctx, address)
-	if err != nil {
-		return 0, err
-	}
-
-	return resp.ConfirmedBalance, nil
-}
-
-func (b *Bitrefcom) GetUnconfirmedBalance(ctx context.Context, address string) (uint64, error) {
-	ctx = chainkit.WithProviderName(ctx, b.Name())
-
-	resp, err := b.fetchBalanceData(ctx, address)
-	if err != nil {
-		return 0, err
-	}
-
-	return resp.UnconfirmedBalance, nil
+	return chainkit.Balance{
+		Confirmed:   resp.ConfirmedBalance,
+		Unconfirmed: resp.UnconfirmedBalance,
+		Total:       resp.ConfirmedBalance + resp.UnconfirmedBalance,
+	}, nil
 }
 
 // CheckHealth performs a health check on the Bitref.com API
@@ -319,7 +276,7 @@ func (b *Bitrefcom) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 	// Bitref.com only supports mainnet - if baseURL is empty, provider is not configured
 	if b.baseURL == "" {
 		return chainkit.HealthStatus{
-			Status:         "error",
+			Status: chainkit.HealthLevelDown,
 			ResponseTimeMs: 0,
 			ResponseTimeUs: 0,
 			Error:          "Bitref.com only supports Bitcoin mainnet",
@@ -334,7 +291,7 @@ func (b *Bitrefcom) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return chainkit.HealthStatus{
-			Status:         "error",
+			Status: chainkit.HealthLevelDown,
 			ResponseTimeMs: 0,
 			ResponseTimeUs: 0,
 			Error:          err.Error(),
@@ -354,7 +311,7 @@ func (b *Bitrefcom) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 
 	if err != nil {
 		return chainkit.HealthStatus{
-			Status:         "down",
+			Status: chainkit.HealthLevelDown,
 			ResponseTimeMs: responseTimeMs,
 			ResponseTimeUs: responseTimeUs,
 			Error:          err.Error(),
@@ -363,17 +320,17 @@ func (b *Bitrefcom) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 	}
 	defer resp.Body.Close()
 
-	status := "healthy"
+	status := chainkit.HealthLevelHealthy
 	errorMsg := ""
 
 	if resp.StatusCode >= 500 {
-		status = "down"
+		status = chainkit.HealthLevelDown
 		errorMsg = fmt.Sprintf("HTTP %d", resp.StatusCode)
 	} else if resp.StatusCode >= 400 {
-		status = "degraded"
+		status = chainkit.HealthLevelDegraded
 		errorMsg = fmt.Sprintf("HTTP %d", resp.StatusCode)
 	} else if responseTimeMs > 2000 {
-		status = "degraded"
+		status = chainkit.HealthLevelDegraded
 		errorMsg = "slow response"
 	}
 

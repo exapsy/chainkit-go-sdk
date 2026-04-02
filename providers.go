@@ -8,18 +8,18 @@ import (
 
 // MixedProviders implements BlockchainProvider using multiple provider chains with fallback support
 type MixedProviders struct {
-	addressGenerators *ProviderManager
-	addressValidators *ProviderManager
-	feeEstimators     *ProviderManager
-	feeRecommenders   *ProviderManager
-	txBroadcasters    *ProviderManager
-	utxoFetchers      *ProviderManager
-	txAssemblers      *ProviderManager
-	txSizers          *ProviderManager
-	txSigners         *ProviderManager
-	txStatusFetchers  *ProviderManager
-	balanceFetchers   *ProviderManager
-	rateFetchers      *ProviderManager
+	addressGenerators *providerManager
+	addressValidators *providerManager
+	feeEstimators     *providerManager
+	feeRecommenders   *providerManager
+	txBroadcasters    *providerManager
+	utxoFetchers      *providerManager
+	txAssemblers      *providerManager
+	txSizers          *providerManager
+	txSigners         *providerManager
+	txStatusFetchers  *providerManager
+	balanceFetchers   *providerManager
+	rateFetchers      *providerManager
 	metricsRecorder   MetricsRecorder
 }
 
@@ -30,14 +30,14 @@ func (m *MixedProviders) Name() string {
 // executeWithFallbackAndMetrics runs fn through the provider chain with fallback and metrics.
 func executeWithFallbackAndMetrics[ResultT any](
 	ctx context.Context,
-	manager *ProviderManager,
+	manager *providerManager,
 	metricsRecorder MetricsRecorder,
 	operation string,
 	fn func(any) (ResultT, error),
 ) (ResultT, error) {
 	var zero ResultT
 
-	result, providerName, duration, err := manager.RunOp(ctx, func(ctx context.Context, provider interface{}) (interface{}, error) { return fn(provider) })
+	result, providerName, duration, err := manager.runOp(ctx, func(ctx context.Context, provider interface{}) (interface{}, error) { return fn(provider) })
 	metricsRecorder.RecordBlockchainRequest(ctx, providerName, operation, err == nil, duration)
 	if err != nil {
 		return zero, err
@@ -46,31 +46,10 @@ func executeWithFallbackAndMetrics[ResultT any](
 	return result.(ResultT), nil
 }
 
-// executeWithFallbackAndMetricsWithContext is like executeWithFallbackAndMetrics but also
-// returns an updated context carrying the name of the provider that handled the request.
-func executeWithFallbackAndMetricsWithContext[ResultT any](
-	ctx context.Context,
-	manager *ProviderManager,
-	metricsRecorder MetricsRecorder,
-	operation string,
-	fn func(any) (ResultT, error),
-) (context.Context, ResultT, error) {
-	var zero ResultT
-
-	result, providerName, duration, err := manager.RunOp(ctx, func(ctx context.Context, provider interface{}) (interface{}, error) { return fn(provider) })
-	ctx = WithProviderName(ctx, providerName)
-	metricsRecorder.RecordBlockchainRequest(ctx, providerName, operation, err == nil, duration)
-	if err != nil {
-		return ctx, zero, err
-	}
-
-	return ctx, result.(ResultT), nil
-}
-
 // ProviderExists reports whether a provider with the given name is registered
 // in any of the role chains.
 func (m *MixedProviders) ProviderExists(name string) bool {
-	for _, manager := range []*ProviderManager{
+	for _, manager := range []*providerManager{
 		m.addressGenerators,
 		m.addressValidators,
 		m.feeEstimators,
@@ -145,29 +124,9 @@ func (m *MixedProviders) GetUTXOs(ctx context.Context, address string) ([]types.
 	})
 }
 
-func (m *MixedProviders) GetBalance(ctx context.Context, address string, opts *GetBalanceOptions) (uint64, error) {
-	_, result, err := executeWithFallbackAndMetricsWithContext(ctx, m.balanceFetchers, m.metricsRecorder, "GetBalance", func(provider interface{}) (uint64, error) {
-		return provider.(BalanceFetcher).GetBalance(ctx, address, opts)
-	})
-	return result, err
-}
-
-// GetBalanceWithContext is like GetBalance but returns the updated context with provider info
-func (m *MixedProviders) GetBalanceWithContext(ctx context.Context, address string, opts *GetBalanceOptions) (context.Context, uint64, error) {
-	return executeWithFallbackAndMetricsWithContext(ctx, m.balanceFetchers, m.metricsRecorder, "GetBalance", func(provider interface{}) (uint64, error) {
-		return provider.(BalanceFetcher).GetBalance(ctx, address, opts)
-	})
-}
-
-func (m *MixedProviders) GetConfirmedBalance(ctx context.Context, address string) (uint64, error) {
-	return executeWithFallbackAndMetrics(ctx, m.balanceFetchers, m.metricsRecorder, "GetConfirmedBalance", func(provider interface{}) (uint64, error) {
-		return provider.(BalanceFetcher).GetConfirmedBalance(ctx, address)
-	})
-}
-
-func (m *MixedProviders) GetUnconfirmedBalance(ctx context.Context, address string) (uint64, error) {
-	return executeWithFallbackAndMetrics(ctx, m.balanceFetchers, m.metricsRecorder, "GetUnconfirmedBalance", func(provider interface{}) (uint64, error) {
-		return provider.(BalanceFetcher).GetUnconfirmedBalance(ctx, address)
+func (m *MixedProviders) GetBalance(ctx context.Context, address string) (Balance, error) {
+	return executeWithFallbackAndMetrics(ctx, m.balanceFetchers, m.metricsRecorder, "GetBalance", func(provider interface{}) (Balance, error) {
+		return provider.(BalanceFetcher).GetBalance(ctx, address)
 	})
 }
 
@@ -189,8 +148,8 @@ func (m *MixedProviders) GetExchangeRates(ctx context.Context, coin types.CoinTi
 	})
 }
 
-func (m *MixedProviders) GetTxStatus(ctx context.Context, txID string) (*TxStatusResponse, error) {
-	return executeWithFallbackAndMetrics(ctx, m.txStatusFetchers, m.metricsRecorder, "GetTxStatus", func(provider interface{}) (*TxStatusResponse, error) {
+func (m *MixedProviders) GetTxStatus(ctx context.Context, txID string) (*TxConfirmationStatus, error) {
+	return executeWithFallbackAndMetrics(ctx, m.txStatusFetchers, m.metricsRecorder, "GetTxStatus", func(provider interface{}) (*TxConfirmationStatus, error) {
 		return provider.(TxStatusFetcher).GetTxStatus(ctx, txID)
 	})
 }

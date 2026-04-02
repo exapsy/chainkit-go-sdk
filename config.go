@@ -90,8 +90,8 @@ func DefaultChainConfig(chainType ProviderChainType) ChainConfig {
 	}
 }
 
-// ProviderConfig configuration structs for each provider type
-type ProviderConfig struct {
+// providerConfig configuration structs for each provider type
+type providerConfig struct {
 	Provider interface{}
 	Priority int // Lower number = higher priority
 	Name     string

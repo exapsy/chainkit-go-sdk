@@ -32,19 +32,13 @@ type CoingeckoOptions struct {
 	CoinGeckoBaseURL string
 }
 
-func NewCoingecko(options *CoingeckoOptions) CoinGeckoService {
-	if options == nil {
-		options = &CoingeckoOptions{
-			CoinGeckoBaseURL: coinGeckoBaseURL,
-		}
-	}
-
-	if options.CoinGeckoBaseURL == "" {
-		options.CoinGeckoBaseURL = coinGeckoBaseURL
+func NewCoingecko(opts CoingeckoOptions) CoinGeckoService {
+	if opts.CoinGeckoBaseURL == "" {
+		opts.CoinGeckoBaseURL = coinGeckoBaseURL
 	}
 
 	return &coingecko{
-		coinGeckoBaseURL: options.CoinGeckoBaseURL,
+		coinGeckoBaseURL: opts.CoinGeckoBaseURL,
 		httpClient:       &http.Client{Timeout: 30 * time.Second},
 	}
 }
@@ -57,7 +51,7 @@ func (s *coingecko) GetExchangeRates(
 	ctx context.Context,
 	coin types.CoinTicker,
 ) ([]types.CoinRate, error) {
-	ctx = chainkit.WithProviderName(ctx, s.Name())
+	// provider name set by manager)
 
 	url := s.coinGeckoBaseURL + "/simple/price?ids=" + coin.CoingeckoString() +
 		"&vs_currencies=usd,eur,gbp,jpy,aud,cad,chf,cny,krw,brl,sgd,sek,nzd,hkd,nok,pln,zar,rub,try"
@@ -124,7 +118,7 @@ func (s *coingecko) GetExchangeRate(
 	coin types.CoinTicker,
 	currency types.Currency,
 ) (*types.CoinRate, error) {
-	ctx = chainkit.WithProviderName(ctx, s.Name())
+	// provider name set by manager)
 
 	url := s.coinGeckoBaseURL + "/simple/price?ids=" + string(
 		coin.CoingeckoString(),
@@ -184,7 +178,7 @@ func (s *coingecko) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return chainkit.HealthStatus{
-			Status:         "error",
+			Status: chainkit.HealthLevelDown,
 			ResponseTimeMs: 0,
 			ResponseTimeUs: 0,
 			Error:          err.Error(),
@@ -199,7 +193,7 @@ func (s *coingecko) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 
 	if err != nil {
 		return chainkit.HealthStatus{
-			Status:         "down",
+			Status: chainkit.HealthLevelDown,
 			ResponseTimeMs: responseTimeMs,
 			ResponseTimeUs: responseTimeUs,
 			Error:          err.Error(),
@@ -208,17 +202,17 @@ func (s *coingecko) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 	}
 	defer resp.Body.Close()
 
-	status := "healthy"
+	status := chainkit.HealthLevelHealthy
 	errorMsg := ""
 
 	if resp.StatusCode >= 500 {
-		status = "down"
+		status = chainkit.HealthLevelDown
 		errorMsg = fmt.Sprintf("HTTP %d", resp.StatusCode)
 	} else if resp.StatusCode >= 400 {
-		status = "degraded"
+		status = chainkit.HealthLevelDegraded
 		errorMsg = fmt.Sprintf("HTTP %d", resp.StatusCode)
 	} else if responseTimeMs > 2000 {
-		status = "degraded"
+		status = chainkit.HealthLevelDegraded
 		errorMsg = "slow response"
 	}
 

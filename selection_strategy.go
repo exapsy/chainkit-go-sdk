@@ -11,7 +11,7 @@ import (
 // selectionStrategy is an interface for provider selection strategies
 type selectionStrategy interface {
 	// SelectProviders returns an ordered list of providers to try based on the strategy
-	SelectProviders(available []ProviderConfig) []ProviderConfig
+	SelectProviders(available []providerConfig) []providerConfig
 
 	// RecordAttempt records that a provider was attempted (used for round-robin, etc.)
 	RecordAttempt(providerName string, priority int)
@@ -23,38 +23,31 @@ type selectionStrategy interface {
 // priorityOnlySelector implements the priority-only strategy (current behavior)
 type priorityOnlySelector struct{}
 
-// newPriorityOnlySelector creates a new priority-only selector
 func newPriorityOnlySelector() selectionStrategy {
 	return &priorityOnlySelector{}
 }
 
-func (s *priorityOnlySelector) SelectProviders(available []ProviderConfig) []ProviderConfig {
-	// Simply return providers in their current order (already sorted by priority)
+func (s *priorityOnlySelector) SelectProviders(available []providerConfig) []providerConfig {
 	return available
 }
 
-func (s *priorityOnlySelector) RecordAttempt(providerName string, priority int) {
-	// No state to track for priority-only
-}
+func (s *priorityOnlySelector) RecordAttempt(providerName string, priority int) {}
 
-func (s *priorityOnlySelector) Reset() {
-	// No state to reset
-}
+func (s *priorityOnlySelector) Reset() {}
 
 // roundRobinSelector implements round-robin selection among same-priority providers
 type roundRobinSelector struct {
 	mutex           sync.RWMutex
-	priorityIndexes map[int]int // Maps priority level to current round-robin index
+	priorityIndexes map[int]int
 }
 
-// newRoundRobinSelector creates a new round-robin selector
 func newRoundRobinSelector() selectionStrategy {
 	return &roundRobinSelector{
 		priorityIndexes: make(map[int]int),
 	}
 }
 
-func (s *roundRobinSelector) SelectProviders(available []ProviderConfig) []ProviderConfig {
+func (s *roundRobinSelector) SelectProviders(available []providerConfig) []providerConfig {
 	if len(available) == 0 {
 		return available
 	}
@@ -62,34 +55,27 @@ func (s *roundRobinSelector) SelectProviders(available []ProviderConfig) []Provi
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	// Group providers by priority
-	priorityGroups := make(map[int][]ProviderConfig)
+	priorityGroups := make(map[int][]providerConfig)
 	priorities := make([]int, 0)
 
 	for _, provider := range available {
 		if _, exists := priorityGroups[provider.Priority]; !exists {
 			priorities = append(priorities, provider.Priority)
-			priorityGroups[provider.Priority] = make([]ProviderConfig, 0)
+			priorityGroups[provider.Priority] = make([]providerConfig, 0)
 		}
 		priorityGroups[provider.Priority] = append(priorityGroups[provider.Priority], provider)
 	}
 	sort.Ints(priorities)
 
-	// Build result with round-robin within each priority group
-	result := make([]ProviderConfig, 0, len(available))
+	result := make([]providerConfig, 0, len(available))
 
 	for _, priority := range priorities {
 		group := priorityGroups[priority]
-
 		if len(group) == 1 {
-			// Only one provider at this priority, just add it
 			result = append(result, group[0])
 		} else {
-			// Multiple providers at this priority - apply round-robin
 			currentIndex := s.priorityIndexes[priority] % len(group)
-
-			// Rotate the group based on current index
-			rotated := make([]ProviderConfig, len(group))
+			rotated := make([]providerConfig, len(group))
 			for i := 0; i < len(group); i++ {
 				rotated[i] = group[(currentIndex+i)%len(group)]
 			}
@@ -103,8 +89,6 @@ func (s *roundRobinSelector) SelectProviders(available []ProviderConfig) []Provi
 func (s *roundRobinSelector) RecordAttempt(providerName string, priority int) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-
-	// Increment the round-robin index for this priority level
 	s.priorityIndexes[priority] = (s.priorityIndexes[priority] + 1)
 }
 
@@ -120,14 +104,13 @@ type randomSelector struct {
 	rng   *rand.Rand
 }
 
-// newRandomSelector creates a new random selector
 func newRandomSelector() selectionStrategy {
 	return &randomSelector{
 		rng: rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 }
 
-func (s *randomSelector) SelectProviders(available []ProviderConfig) []ProviderConfig {
+func (s *randomSelector) SelectProviders(available []providerConfig) []providerConfig {
 	if len(available) == 0 {
 		return available
 	}
@@ -135,39 +118,31 @@ func (s *randomSelector) SelectProviders(available []ProviderConfig) []ProviderC
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	// Group providers by priority
-	priorityGroups := make(map[int][]ProviderConfig)
+	priorityGroups := make(map[int][]providerConfig)
 	priorities := make([]int, 0)
 
 	for _, provider := range available {
 		if _, exists := priorityGroups[provider.Priority]; !exists {
 			priorities = append(priorities, provider.Priority)
-			priorityGroups[provider.Priority] = make([]ProviderConfig, 0)
+			priorityGroups[provider.Priority] = make([]providerConfig, 0)
 		}
 		priorityGroups[provider.Priority] = append(priorityGroups[provider.Priority], provider)
 	}
 	sort.Ints(priorities)
 
-	// Build result with random ordering within each priority group
-	result := make([]ProviderConfig, 0, len(available))
+	result := make([]providerConfig, 0, len(available))
 
 	for _, priority := range priorities {
 		group := priorityGroups[priority]
-
 		if len(group) == 1 {
-			// Only one provider at this priority, just add it
 			result = append(result, group[0])
 		} else {
-			// Multiple providers at this priority - shuffle them
-			shuffled := make([]ProviderConfig, len(group))
+			shuffled := make([]providerConfig, len(group))
 			copy(shuffled, group)
-
-			// Fisher-Yates shuffle
 			for i := len(shuffled) - 1; i > 0; i-- {
 				j := s.rng.Intn(i + 1)
 				shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
 			}
-
 			result = append(result, shuffled...)
 		}
 	}
@@ -175,12 +150,9 @@ func (s *randomSelector) SelectProviders(available []ProviderConfig) []ProviderC
 	return result
 }
 
-func (s *randomSelector) RecordAttempt(providerName string, priority int) {
-	// No state to track for random selection
-}
+func (s *randomSelector) RecordAttempt(providerName string, priority int) {}
 
 func (s *randomSelector) Reset() {
-	// Reset the random seed
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.rng = rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -190,22 +162,21 @@ func (s *randomSelector) Reset() {
 type leastLoadedSelector struct {
 	mutex          sync.RWMutex
 	providerStats  map[string]*providerLoadStats
-	failureTracker map[string]*FailureInfo // Reference to the manager's failure tracker
+	failureTracker map[string]*failureInfo
 }
 
 type providerLoadStats struct {
 	activeRequests int64
 }
 
-// newLeastLoadedSelector creates a new least-loaded selector
-func newLeastLoadedSelector(failureTracker map[string]*FailureInfo) selectionStrategy {
+func newLeastLoadedSelector(ft map[string]*failureInfo) selectionStrategy {
 	return &leastLoadedSelector{
 		providerStats:  make(map[string]*providerLoadStats),
-		failureTracker: failureTracker,
+		failureTracker: ft,
 	}
 }
 
-func (s *leastLoadedSelector) SelectProviders(available []ProviderConfig) []ProviderConfig {
+func (s *leastLoadedSelector) SelectProviders(available []providerConfig) []providerConfig {
 	if len(available) == 0 {
 		return available
 	}
@@ -213,34 +184,27 @@ func (s *leastLoadedSelector) SelectProviders(available []ProviderConfig) []Prov
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	// Group providers by priority
-	priorityGroups := make(map[int][]ProviderConfig)
+	priorityGroups := make(map[int][]providerConfig)
 	priorities := make([]int, 0)
 
 	for _, provider := range available {
 		if _, exists := priorityGroups[provider.Priority]; !exists {
 			priorities = append(priorities, provider.Priority)
-			priorityGroups[provider.Priority] = make([]ProviderConfig, 0)
+			priorityGroups[provider.Priority] = make([]providerConfig, 0)
 		}
 		priorityGroups[provider.Priority] = append(priorityGroups[provider.Priority], provider)
 	}
 	sort.Ints(priorities)
 
-	// Build result with least-loaded ordering within each priority group
-	result := make([]ProviderConfig, 0, len(available))
+	result := make([]providerConfig, 0, len(available))
 
 	for _, priority := range priorities {
 		group := priorityGroups[priority]
-
 		if len(group) == 1 {
-			// Only one provider at this priority, just add it
 			result = append(result, group[0])
 		} else {
-			// Multiple providers at this priority - sort by load
-			sorted := make([]ProviderConfig, len(group))
+			sorted := make([]providerConfig, len(group))
 			copy(sorted, group)
-
-			// Sort by success rate and active requests
 			for i := 0; i < len(sorted)-1; i++ {
 				for j := i + 1; j < len(sorted); j++ {
 					if s.getLoadScore(sorted[i].Name) > s.getLoadScore(sorted[j].Name) {
@@ -248,7 +212,6 @@ func (s *leastLoadedSelector) SelectProviders(available []ProviderConfig) []Prov
 					}
 				}
 			}
-
 			result = append(result, sorted...)
 		}
 	}
@@ -257,33 +220,22 @@ func (s *leastLoadedSelector) SelectProviders(available []ProviderConfig) []Prov
 }
 
 func (s *leastLoadedSelector) getLoadScore(providerName string) float64 {
-	// Lower score = better (less loaded)
 	score := 0.0
-
-	// Factor in active requests
 	if stats, exists := s.providerStats[providerName]; exists {
 		score += float64(stats.activeRequests) * 10.0
 	}
-
-	// Factor in failure rate
 	if failure, exists := s.failureTracker[providerName]; exists {
 		totalRequests := failure.TotalSuccesses + failure.TotalFailures
 		if totalRequests > 0 {
 			failureRate := float64(failure.TotalFailures) / float64(totalRequests)
 			score += failureRate * 100.0
 		}
-
-		// Heavily penalize consecutive failures
 		score += float64(failure.ConsecutiveFailures) * 50.0
 	}
-
 	return score
 }
 
-func (s *leastLoadedSelector) RecordAttempt(providerName string, priority int) {
-	// This could be used to track active requests, but for now we don't need it
-	// as the failure tracker already handles success/failure tracking
-}
+func (s *leastLoadedSelector) RecordAttempt(providerName string, priority int) {}
 
 func (s *leastLoadedSelector) Reset() {
 	s.mutex.Lock()
@@ -291,8 +243,7 @@ func (s *leastLoadedSelector) Reset() {
 	s.providerStats = make(map[string]*providerLoadStats)
 }
 
-// NewselectionStrategy creates a provider selector based on the selection strategy
-func newSelectionStrategy(strategy SelectionStrategy, failureTracker map[string]*FailureInfo) (selectionStrategy, error) {
+func newSelectionStrategy(strategy SelectionStrategy, ft map[string]*failureInfo) (selectionStrategy, error) {
 	switch strategy {
 	case SelectionStrategyPriorityOnly:
 		return newPriorityOnlySelector(), nil
@@ -301,7 +252,7 @@ func newSelectionStrategy(strategy SelectionStrategy, failureTracker map[string]
 	case SelectionStrategyRandom:
 		return newRandomSelector(), nil
 	case SelectionStrategyLeastLoaded:
-		return newLeastLoadedSelector(failureTracker), nil
+		return newLeastLoadedSelector(ft), nil
 	default:
 		return nil, fmt.Errorf("unknown selection strategy: %s", strategy)
 	}

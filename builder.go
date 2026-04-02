@@ -3,18 +3,18 @@ package chainkit
 
 // MixedProvidersBuilder implements the builder pattern for creating MixedProviders
 type MixedProvidersBuilder struct {
-	addressGenerators *ProviderManager
-	addressValidators *ProviderManager
-	feeEstimators     *ProviderManager
-	feeRecommenders   *ProviderManager
-	txBroadcasters    *ProviderManager
-	utxoFetchers      *ProviderManager
-	txAssemblers      *ProviderManager
-	txSizers          *ProviderManager
-	txSigners         *ProviderManager
-	txStatusFetchers  *ProviderManager
-	balanceFetchers   *ProviderManager
-	rateFetchers      *ProviderManager
+	addressGenerators *providerManager
+	addressValidators *providerManager
+	feeEstimators     *providerManager
+	feeRecommenders   *providerManager
+	txBroadcasters    *providerManager
+	utxoFetchers      *providerManager
+	txAssemblers      *providerManager
+	txSizers          *providerManager
+	txSigners         *providerManager
+	txStatusFetchers  *providerManager
+	balanceFetchers   *providerManager
+	rateFetchers      *providerManager
 
 	chainConfigs    map[string]ChainConfig
 	metricsRecorder MetricsRecorder
@@ -23,18 +23,18 @@ type MixedProvidersBuilder struct {
 // NewMixedProvidersBuilder creates a new builder with default configurations
 func NewMixedProvidersBuilder() *MixedProvidersBuilder {
 	return &MixedProvidersBuilder{
-		addressGenerators: NewProviderManager(DefaultChainConfig(ProviderChainAddressGenerators)),
-		addressValidators: NewProviderManager(DefaultChainConfig(ProviderChainAddressValidators)),
-		feeEstimators:     NewProviderManager(DefaultChainConfig(ProviderChainFeeEstimators)),
-		feeRecommenders:   NewProviderManager(DefaultChainConfig(ProviderChainFeeRecommenders)),
-		txBroadcasters:    NewProviderManager(DefaultChainConfig(ProviderChainTxBroadcasters)),
-		utxoFetchers:      NewProviderManager(DefaultChainConfig(ProviderChainUTXOFetchers)),
-		txAssemblers:      NewProviderManager(DefaultChainConfig(ProviderChainTxAssemblers)),
-		txSizers:          NewProviderManager(DefaultChainConfig(ProviderChainTxSizers)),
-		txSigners:         NewProviderManager(DefaultChainConfig(ProviderChainTxSigners)),
-		txStatusFetchers:  NewProviderManager(DefaultChainConfig(ProviderChainTxStatusFetchers)),
-		balanceFetchers:   NewProviderManager(DefaultChainConfig(ProviderChainBalanceFetchers)),
-		rateFetchers:      NewProviderManager(DefaultChainConfig(ProviderChainRateFetchers)),
+		addressGenerators: newProviderManager(DefaultChainConfig(ProviderChainAddressGenerators)),
+		addressValidators: newProviderManager(DefaultChainConfig(ProviderChainAddressValidators)),
+		feeEstimators:     newProviderManager(DefaultChainConfig(ProviderChainFeeEstimators)),
+		feeRecommenders:   newProviderManager(DefaultChainConfig(ProviderChainFeeRecommenders)),
+		txBroadcasters:    newProviderManager(DefaultChainConfig(ProviderChainTxBroadcasters)),
+		utxoFetchers:      newProviderManager(DefaultChainConfig(ProviderChainUTXOFetchers)),
+		txAssemblers:      newProviderManager(DefaultChainConfig(ProviderChainTxAssemblers)),
+		txSizers:          newProviderManager(DefaultChainConfig(ProviderChainTxSizers)),
+		txSigners:         newProviderManager(DefaultChainConfig(ProviderChainTxSigners)),
+		txStatusFetchers:  newProviderManager(DefaultChainConfig(ProviderChainTxStatusFetchers)),
+		balanceFetchers:   newProviderManager(DefaultChainConfig(ProviderChainBalanceFetchers)),
+		rateFetchers:      newProviderManager(DefaultChainConfig(ProviderChainRateFetchers)),
 		chainConfigs:      make(map[string]ChainConfig),
 		metricsRecorder:   &NoOpMetricsRecorder{}, // Default to no-op metrics
 	}
@@ -48,29 +48,29 @@ func (b *MixedProvidersBuilder) WithChainConfig(chainType ProviderChainType, con
 	// Apply configuration to the appropriate provider manager
 	switch chainType {
 	case ProviderChainAddressGenerators:
-		b.addressGenerators.UpdateChainConfig(config)
+		b.addressGenerators.updateChainConfig(config)
 	case ProviderChainAddressValidators:
-		b.addressValidators.UpdateChainConfig(config)
+		b.addressValidators.updateChainConfig(config)
 	case ProviderChainFeeEstimators:
-		b.feeEstimators.UpdateChainConfig(config)
+		b.feeEstimators.updateChainConfig(config)
 	case ProviderChainFeeRecommenders:
-		b.feeRecommenders.UpdateChainConfig(config)
+		b.feeRecommenders.updateChainConfig(config)
 	case ProviderChainTxBroadcasters:
-		b.txBroadcasters.UpdateChainConfig(config)
+		b.txBroadcasters.updateChainConfig(config)
 	case ProviderChainUTXOFetchers:
-		b.utxoFetchers.UpdateChainConfig(config)
+		b.utxoFetchers.updateChainConfig(config)
 	case ProviderChainTxAssemblers:
-		b.txAssemblers.UpdateChainConfig(config)
+		b.txAssemblers.updateChainConfig(config)
 	case ProviderChainTxSizers:
-		b.txSizers.UpdateChainConfig(config)
+		b.txSizers.updateChainConfig(config)
 	case ProviderChainTxSigners:
-		b.txSigners.UpdateChainConfig(config)
+		b.txSigners.updateChainConfig(config)
 	case ProviderChainTxStatusFetchers:
-		b.txStatusFetchers.UpdateChainConfig(config)
+		b.txStatusFetchers.updateChainConfig(config)
 	case ProviderChainBalanceFetchers:
-		b.balanceFetchers.UpdateChainConfig(config)
+		b.balanceFetchers.updateChainConfig(config)
 	case ProviderChainRateFetchers:
-		b.rateFetchers.UpdateChainConfig(config)
+		b.rateFetchers.updateChainConfig(config)
 	}
 
 	return b
@@ -103,11 +103,11 @@ func (b *MixedProvidersBuilder) WithBalanceFetcherChain(fetchers ...BalanceFetch
 		}
 
 		if fetcher.ChainConfig != nil && !chainConfigApplied {
-			b.balanceFetchers.UpdateChainConfig(*fetcher.ChainConfig)
+			b.balanceFetchers.updateChainConfig(*fetcher.ChainConfig)
 			chainConfigApplied = true
 		}
 
-		b.balanceFetchers.AddProvider(fetcher.Fetcher, fetcher.Priority, name)
+		b.balanceFetchers.addProvider(fetcher.Fetcher, fetcher.Priority, name)
 	}
 	return b
 }
@@ -129,11 +129,11 @@ func (b *MixedProvidersBuilder) WithRateFetcherChain(fetchers ...RateFetcherConf
 		}
 
 		if fetcher.ChainConfig != nil && !chainConfigApplied {
-			b.rateFetchers.UpdateChainConfig(*fetcher.ChainConfig)
+			b.rateFetchers.updateChainConfig(*fetcher.ChainConfig)
 			chainConfigApplied = true
 		}
 
-		b.rateFetchers.AddProvider(fetcher.Fetcher, fetcher.Priority, name)
+		b.rateFetchers.addProvider(fetcher.Fetcher, fetcher.Priority, name)
 	}
 	return b
 }
@@ -155,11 +155,11 @@ func (b *MixedProvidersBuilder) WithAddressGeneratorChain(generators ...AddressG
 		}
 
 		if generator.ChainConfig != nil && !chainConfigApplied {
-			b.addressGenerators.UpdateChainConfig(*generator.ChainConfig)
+			b.addressGenerators.updateChainConfig(*generator.ChainConfig)
 			chainConfigApplied = true
 		}
 
-		b.addressGenerators.AddProvider(generator.Generator, generator.Priority, name)
+		b.addressGenerators.addProvider(generator.Generator, generator.Priority, name)
 	}
 	return b
 }
@@ -183,11 +183,11 @@ func (b *MixedProvidersBuilder) WithFeeRecommenderChain(recommenders ...FeeRecom
 		}
 
 		if r.ChainConfig != nil && !chainConfigApplied {
-			b.feeRecommenders.UpdateChainConfig(*r.ChainConfig)
+			b.feeRecommenders.updateChainConfig(*r.ChainConfig)
 			chainConfigApplied = true
 		}
 
-		b.feeRecommenders.AddProvider(r.Recommender, r.Priority, name)
+		b.feeRecommenders.addProvider(r.Recommender, r.Priority, name)
 	}
 	return b
 }
@@ -209,11 +209,11 @@ func (b *MixedProvidersBuilder) WithFeeEstimatorChain(estimators ...FeeEstimator
 		}
 
 		if estimator.ChainConfig != nil && !chainConfigApplied {
-			b.feeEstimators.UpdateChainConfig(*estimator.ChainConfig)
+			b.feeEstimators.updateChainConfig(*estimator.ChainConfig)
 			chainConfigApplied = true
 		}
 
-		b.feeEstimators.AddProvider(estimator.Estimator, estimator.Priority, name)
+		b.feeEstimators.addProvider(estimator.Estimator, estimator.Priority, name)
 	}
 	return b
 }
@@ -235,11 +235,11 @@ func (b *MixedProvidersBuilder) WithTxBroadcasterChain(broadcasters ...TxBroadca
 		}
 
 		if broadcaster.ChainConfig != nil && !chainConfigApplied {
-			b.txBroadcasters.UpdateChainConfig(*broadcaster.ChainConfig)
+			b.txBroadcasters.updateChainConfig(*broadcaster.ChainConfig)
 			chainConfigApplied = true
 		}
 
-		b.txBroadcasters.AddProvider(broadcaster.Broadcaster, broadcaster.Priority, name)
+		b.txBroadcasters.addProvider(broadcaster.Broadcaster, broadcaster.Priority, name)
 	}
 	return b
 }
@@ -261,11 +261,11 @@ func (b *MixedProvidersBuilder) WithTxAssemblerChain(assemblers ...TxAssemblerCo
 		}
 
 		if assembler.ChainConfig != nil && !chainConfigApplied {
-			b.txAssemblers.UpdateChainConfig(*assembler.ChainConfig)
+			b.txAssemblers.updateChainConfig(*assembler.ChainConfig)
 			chainConfigApplied = true
 		}
 
-		b.txAssemblers.AddProvider(assembler.Assembler, assembler.Priority, name)
+		b.txAssemblers.addProvider(assembler.Assembler, assembler.Priority, name)
 	}
 	return b
 }
@@ -287,11 +287,11 @@ func (b *MixedProvidersBuilder) WithTxSizerChain(sizers ...TxSizerConfig) *Mixed
 		}
 
 		if sizer.ChainConfig != nil && !chainConfigApplied {
-			b.txSizers.UpdateChainConfig(*sizer.ChainConfig)
+			b.txSizers.updateChainConfig(*sizer.ChainConfig)
 			chainConfigApplied = true
 		}
 
-		b.txSizers.AddProvider(sizer.Sizer, sizer.Priority, name)
+		b.txSizers.addProvider(sizer.Sizer, sizer.Priority, name)
 	}
 	return b
 }
@@ -313,11 +313,11 @@ func (b *MixedProvidersBuilder) WithTxSignerChain(signers ...TxSignerConfig) *Mi
 		}
 
 		if signer.ChainConfig != nil && !chainConfigApplied {
-			b.txSigners.UpdateChainConfig(*signer.ChainConfig)
+			b.txSigners.updateChainConfig(*signer.ChainConfig)
 			chainConfigApplied = true
 		}
 
-		b.txSigners.AddProvider(signer.Signer, signer.Priority, name)
+		b.txSigners.addProvider(signer.Signer, signer.Priority, name)
 	}
 	return b
 }
@@ -339,11 +339,11 @@ func (b *MixedProvidersBuilder) WithUTXOFetcherChain(fetchers ...UTXOFetcherConf
 		}
 
 		if fetcher.ChainConfig != nil && !chainConfigApplied {
-			b.utxoFetchers.UpdateChainConfig(*fetcher.ChainConfig)
+			b.utxoFetchers.updateChainConfig(*fetcher.ChainConfig)
 			chainConfigApplied = true
 		}
 
-		b.utxoFetchers.AddProvider(fetcher.Fetcher, fetcher.Priority, name)
+		b.utxoFetchers.addProvider(fetcher.Fetcher, fetcher.Priority, name)
 	}
 	return b
 }
@@ -365,11 +365,11 @@ func (b *MixedProvidersBuilder) WithAddressValidatorChain(validators ...AddressV
 		}
 
 		if validator.ChainConfig != nil && !chainConfigApplied {
-			b.addressValidators.UpdateChainConfig(*validator.ChainConfig)
+			b.addressValidators.updateChainConfig(*validator.ChainConfig)
 			chainConfigApplied = true
 		}
 
-		b.addressValidators.AddProvider(validator.Validator, validator.Priority, name)
+		b.addressValidators.addProvider(validator.Validator, validator.Priority, name)
 	}
 	return b
 }
@@ -391,11 +391,11 @@ func (b *MixedProvidersBuilder) WithTxStatusFetcherChain(fetchers ...TxStatusFet
 		}
 
 		if fetcher.ChainConfig != nil && !chainConfigApplied {
-			b.txStatusFetchers.UpdateChainConfig(*fetcher.ChainConfig)
+			b.txStatusFetchers.updateChainConfig(*fetcher.ChainConfig)
 			chainConfigApplied = true
 		}
 
-		b.txStatusFetchers.AddProvider(fetcher.Fetcher, fetcher.Priority, name)
+		b.txStatusFetchers.addProvider(fetcher.Fetcher, fetcher.Priority, name)
 	}
 	return b
 }

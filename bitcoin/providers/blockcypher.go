@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"math/big"
 	"net/http"
 	"strings"
 	"time"
@@ -28,21 +27,24 @@ type blockcypher struct {
 
 type BlockcypherProviderOptions struct {
 	APIKey string
-	// Chain is the Blockcypher chain identifier for the active network,
-	// e.g. "main" for mainnet, "test3" for testnet3.
-	// This value comes directly from config/providers/blockcypher.yaml
-	// and must be resolved by the caller before constructing the provider.
-	Chain string
-	// Coin is the Blockcypher coin identifier, e.g. "btc".
-	Coin string
+	// Network is the Bitcoin network to connect to. The provider derives the
+	// Blockcypher chain identifier ("main"/"test3") from this value internally.
+	// Blockcypher supports mainnet, testnet3, and testnet4 (mapped to test3).
+	Network types.BitcoinNetwork
 }
 
+// NewBlockcypher creates a BlockcypherProvider for the given network.
+// Returns nil if the network is not supported by Blockcypher (regtest, simnet).
 func NewBlockcypher(options BlockcypherProviderOptions) BlockcypherProvider {
+	chain, ok := options.Network.BlockcypherChain()
+	if !ok {
+		return nil
+	}
 	return &blockcypher{
 		Client: gobcy.API{
 			Token: options.APIKey,
-			Chain: options.Chain,
-			Coin:  options.Coin,
+			Chain: chain,
+			Coin:  "btc",
 		},
 	}
 }
@@ -96,50 +98,27 @@ func (p *blockcypher) ValidateAddress(ctx context.Context, address string) (bool
 	return true, nil
 }
 
-func (p *blockcypher) GetBalance(
-	ctx context.Context,
-	address string,
-	opts *chainkit.GetBalanceOptions,
-) (uint64, error) {
-	// If UTXOs are provided, calculate balance from them
-	if opts != nil && len(opts.UTXOs) > 0 {
-		balance, err := getBalanceByUTXOs(opts.UTXOs)
-		if err != nil {
-			return 0, fmt.Errorf("failed to calculate balance from UTXOs: %w", err)
-		}
-
-		return balance, nil
-	}
-
+// GetBalance fetches address details once and returns confirmed, unconfirmed, and total balance.
+func (p *blockcypher) GetBalance(ctx context.Context, address string) (chainkit.Balance, error) {
 	addr, err := p.Client.GetAddr(address, nil)
 	if err != nil {
-		return 0, fmt.Errorf("failed to fetch address details: %w", err)
+		return chainkit.Balance{}, fmt.Errorf("failed to fetch address details: %w", err)
 	}
 
-	totalBalance := new(big.Int).Add(&addr.Balance, &addr.UnconfirmedBalance)
-	if totalBalance.Sign() < 0 {
-		return 0, nil
+	confirmed := addr.Balance.Int64()
+	unconfirmed := addr.UnconfirmedBalance.Int64()
+	if confirmed < 0 {
+		confirmed = 0
+	}
+	if unconfirmed < 0 {
+		unconfirmed = 0
 	}
 
-	return uint64(totalBalance.Int64()), nil
-}
-
-func (p *blockcypher) GetConfirmedBalance(ctx context.Context, address string) (uint64, error) {
-	addr, err := p.Client.GetAddr(address, nil)
-	if err != nil {
-		return 0, fmt.Errorf("failed to fetch address details: %w", err)
-	}
-
-	return uint64(addr.Balance.Int64()), nil
-}
-
-func (p *blockcypher) GetUnconfirmedBalance(ctx context.Context, address string) (uint64, error) {
-	addr, err := p.Client.GetAddr(address, nil)
-	if err != nil {
-		return 0, fmt.Errorf("failed to fetch address details: %w", err)
-	}
-
-	return uint64(addr.UnconfirmedBalance.Int64()), nil
+	return chainkit.Balance{
+		Confirmed:   uint64(confirmed),
+		Unconfirmed: uint64(unconfirmed),
+		Total:       uint64(confirmed + unconfirmed),
+	}, nil
 }
 
 // CheckHealth performs a health check on the BlockCypher API
@@ -148,7 +127,7 @@ func (p *blockcypher) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 
 	if p.Client.Chain == "" || p.Client.Coin == "" {
 		return chainkit.HealthStatus{
-			Status:         "error",
+			Status: chainkit.HealthLevelDown,
 			ResponseTimeMs: 0,
 			ResponseTimeUs: 0,
 			Error:          "Blockcypher.com only supports Bitcoin mainnet and testnet3",
@@ -166,7 +145,7 @@ func (p *blockcypher) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return chainkit.HealthStatus{
-			Status:         "error",
+			Status: chainkit.HealthLevelDown,
 			ResponseTimeMs: 0,
 			ResponseTimeUs: 0,
 			Error:          err.Error(),
@@ -181,7 +160,7 @@ func (p *blockcypher) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 
 	if err != nil {
 		return chainkit.HealthStatus{
-			Status:         "down",
+			Status: chainkit.HealthLevelDown,
 			ResponseTimeMs: responseTimeMs,
 			ResponseTimeUs: responseTimeUs,
 			Error:          err.Error(),
@@ -190,17 +169,17 @@ func (p *blockcypher) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 	}
 	defer resp.Body.Close()
 
-	status := "healthy"
+	status := chainkit.HealthLevelHealthy
 	errorMsg := ""
 
 	if resp.StatusCode >= 500 {
-		status = "down"
+		status = chainkit.HealthLevelDown
 		errorMsg = fmt.Sprintf("HTTP %d", resp.StatusCode)
 	} else if resp.StatusCode >= 400 {
-		status = "degraded"
+		status = chainkit.HealthLevelDegraded
 		errorMsg = fmt.Sprintf("HTTP %d", resp.StatusCode)
 	} else if responseTimeMs > 2000 {
-		status = "degraded"
+		status = chainkit.HealthLevelDegraded
 		errorMsg = "slow response"
 	}
 

@@ -94,7 +94,6 @@ func (p *blockstream) Name() string {
 }
 
 func (p *blockstream) GetUTXOs(ctx context.Context, address string) ([]types.UTXO, error) {
-	ctx = chainkit.WithProviderName(ctx, p.Name())
 
 	// GET /address/:address/utxo
 	// Returns: txid, vout, value, status.confirmed
@@ -130,68 +129,30 @@ func (p *blockstream) GetUTXOs(ctx context.Context, address string) ([]types.UTX
 	return utxos, nil
 }
 
-func (p *blockstream) GetBalance(ctx context.Context, address string, options *chainkit.GetBalanceOptions) (uint64, error) {
-	ctx = chainkit.WithProviderName(ctx, p.Name())
-
-	if options != nil && len(options.UTXOs) > 0 {
-		var balance uint64
-		for _, utxo := range options.UTXOs {
-			balance += uint64(utxo.Amount)
-		}
-		return balance, nil
-	}
-
+// GetBalance fetches UTXOs once and returns confirmed, unconfirmed, and total balance.
+func (p *blockstream) GetBalance(ctx context.Context, address string) (chainkit.Balance, error) {
 	utxos, err := p.GetUTXOs(ctx, address)
 	if err != nil {
-		return 0, fmt.Errorf("failed to fetch UTXOs: %w", err)
+		return chainkit.Balance{}, fmt.Errorf("failed to fetch UTXOs: %w", err)
 	}
 
-	var balance uint64
-	for _, utxo := range utxos {
-		balance += uint64(utxo.Amount)
-	}
-
-	return balance, nil
-}
-
-func (p *blockstream) GetConfirmedBalance(ctx context.Context, address string) (uint64, error) {
-	ctx = chainkit.WithProviderName(ctx, p.Name())
-
-	utxos, err := p.GetUTXOs(ctx, address)
-	if err != nil {
-		return 0, fmt.Errorf("failed to fetch UTXOs: %w", err)
-	}
-
-	var balance uint64
+	var confirmed, unconfirmed uint64
 	for _, utxo := range utxos {
 		if utxo.Confirmed {
-			balance += uint64(utxo.Amount)
+			confirmed += uint64(utxo.Amount)
+		} else {
+			unconfirmed += uint64(utxo.Amount)
 		}
 	}
 
-	return balance, nil
-}
-
-func (p *blockstream) GetUnconfirmedBalance(ctx context.Context, address string) (uint64, error) {
-	ctx = chainkit.WithProviderName(ctx, p.Name())
-
-	utxos, err := p.GetUTXOs(ctx, address)
-	if err != nil {
-		return 0, fmt.Errorf("failed to fetch UTXOs: %w", err)
-	}
-
-	var balance uint64
-	for _, utxo := range utxos {
-		if !utxo.Confirmed {
-			balance += uint64(utxo.Amount)
-		}
-	}
-
-	return balance, nil
+	return chainkit.Balance{
+		Confirmed:   confirmed,
+		Unconfirmed: unconfirmed,
+		Total:       confirmed + unconfirmed,
+	}, nil
 }
 
 func (p *blockstream) ValidateAddress(ctx context.Context, address string) (bool, error) {
-	ctx = chainkit.WithProviderName(ctx, p.Name())
 
 	// callAPI returns an error for non-200 status codes (including 400 invalid address).
 	// A 400 response means the address format is invalid; any other error is unexpected.
@@ -355,7 +316,7 @@ func (p *blockstream) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return chainkit.HealthStatus{
-			Status:         "error",
+			Status: chainkit.HealthLevelDown,
 			ResponseTimeMs: 0,
 			ResponseTimeUs: 0,
 			Error:          err.Error(),
@@ -375,7 +336,7 @@ func (p *blockstream) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 
 	if err != nil {
 		return chainkit.HealthStatus{
-			Status:         "down",
+			Status: chainkit.HealthLevelDown,
 			ResponseTimeMs: responseTimeMs,
 			ResponseTimeUs: responseTimeUs,
 			Error:          err.Error(),
@@ -384,17 +345,17 @@ func (p *blockstream) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 	}
 	defer resp.Body.Close()
 
-	status := "healthy"
+	status := chainkit.HealthLevelHealthy
 	errorMsg := ""
 
 	if resp.StatusCode >= 500 {
-		status = "down"
+		status = chainkit.HealthLevelDown
 		errorMsg = fmt.Sprintf("HTTP %d", resp.StatusCode)
 	} else if resp.StatusCode >= 400 {
-		status = "degraded"
+		status = chainkit.HealthLevelDegraded
 		errorMsg = fmt.Sprintf("HTTP %d", resp.StatusCode)
 	} else if responseTimeMs > 2000 {
-		status = "degraded"
+		status = chainkit.HealthLevelDegraded
 		errorMsg = "slow response"
 	}
 
@@ -419,7 +380,6 @@ type BlockstreamFeeEstimates map[string]float64
 //
 // For example: { "1": 87.882, "2": 87.882, "3": 87.882, "4": 87.882, "5": 81.129, "6": 68.285, ..., "144": 1.027, "504": 1.027, "1008": 1.027 }
 func (p *blockstream) getFeeEstimates(ctx context.Context) (BlockstreamFeeEstimates, error) {
-	ctx = chainkit.WithProviderName(ctx, p.Name())
 
 	endpoint := "/fee-estimates"
 
@@ -440,7 +400,6 @@ func (p *blockstream) getFeeEstimates(ctx context.Context) (BlockstreamFeeEstima
 // GetTxFees implements FeeRecommender interface
 // Returns fee estimates for different confirmation targets (fast, medium, slow)
 func (p *blockstream) GetTxFees(ctx context.Context) ([]types.FeeTier, error) {
-	ctx = chainkit.WithProviderName(ctx, p.Name())
 
 	estimates, err := p.getFeeEstimates(ctx)
 	if err != nil {

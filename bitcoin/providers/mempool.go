@@ -35,13 +35,18 @@ type mempoolProvider struct {
 	httpClient *http.Client
 }
 
-// NewMempool creates a new MempoolProvider. baseURL is the fully resolved API
-// endpoint for the active network (e.g. "https://mempool.space/api") and must
-// be supplied by the caller — typically resolved from config/providers/mempool.yaml.
-func NewMempool(network types.BitcoinNetwork, baseURL string) MempoolProvider {
+type MempoolOptions struct {
+	Network types.BitcoinNetwork
+	// BaseURL is the fully resolved API endpoint for the active network
+	// (e.g. "https://mempool.space/api"). Resolved from config/providers/mempool.yaml
+	// by the caller.
+	BaseURL string
+}
+
+func NewMempool(opts MempoolOptions) MempoolProvider {
 	return &mempoolProvider{
-		network:    network,
-		baseURL:    baseURL,
+		network:    opts.Network,
+		baseURL:    opts.BaseURL,
 		httpClient: &http.Client{Timeout: 10 * time.Second},
 	}
 }
@@ -109,7 +114,6 @@ func (s *mempoolProvider) GetExchangeRates(
 	ctx context.Context,
 	coin types.CoinTicker,
 ) ([]types.CoinRate, error) {
-	ctx = chainkit.WithProviderName(ctx, s.Name())
 
 	switch coin {
 	case types.CoinTickerBTC:
@@ -141,7 +145,6 @@ func (s *mempoolProvider) GetExchangeRate(
 	coin types.CoinTicker,
 	currency types.Currency,
 ) (*types.CoinRate, error) {
-	ctx = chainkit.WithProviderName(ctx, s.Name())
 
 	switch coin {
 	case types.CoinTickerBTC:
@@ -168,33 +171,23 @@ func (s *mempoolProvider) GetExchangeRate(
 	}
 }
 
-// GetBalance returns the total balance (confirmed + unconfirmed)
-func (m *mempoolProvider) GetBalance(ctx context.Context, address string, opts *chainkit.GetBalanceOptions) (uint64, error) {
-	ctx = chainkit.WithProviderName(ctx, m.Name())
-
-	if opts != nil && len(opts.UTXOs) > 0 {
-		var total uint64
-		for _, u := range opts.UTXOs {
-			total += uint64(u.Amount)
-		}
-		return total, nil
-	}
-
+// GetBalance returns confirmed, unconfirmed, and total balance in a single network call.
+func (m *mempoolProvider) GetBalance(ctx context.Context, address string) (chainkit.Balance, error) {
 	url := fmt.Sprintf("%s/address/%s", m.baseURL, address)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		return 0, &types.RequestError{Err: err, Message: "failed to create request"}
+		return chainkit.Balance{}, &types.RequestError{Err: err, Message: "failed to create request"}
 	}
 
 	resp, err := m.httpClient.Do(req)
 	if err != nil {
-		return 0, &types.RequestError{Err: err, Message: "failed to fetch balance"}
+		return chainkit.Balance{}, &types.RequestError{Err: err, Message: "failed to fetch balance"}
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
-		return 0, &types.RequestError{
+		return chainkit.Balance{}, &types.RequestError{
 			Message: fmt.Sprintf("API returned status %d: %s", resp.StatusCode, string(body)),
 		}
 	}
@@ -211,103 +204,27 @@ func (m *mempoolProvider) GetBalance(ctx context.Context, address string, opts *
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return 0, &types.RequestError{Err: err, Message: "failed to decode response"}
+		return chainkit.Balance{}, &types.RequestError{Err: err, Message: "failed to decode response"}
 	}
 
-	confirmedBalance := result.ChainStats.FundedTxoSum - result.ChainStats.SpentTxoSum
-	unconfirmedBalance := result.MempoolStats.FundedTxoSum - result.MempoolStats.SpentTxoSum
-
-	totalBalance := confirmedBalance + unconfirmedBalance
-	if totalBalance < 0 {
-		return 0, nil
+	confirmed := result.ChainStats.FundedTxoSum - result.ChainStats.SpentTxoSum
+	unconfirmed := result.MempoolStats.FundedTxoSum - result.MempoolStats.SpentTxoSum
+	if confirmed < 0 {
+		confirmed = 0
+	}
+	if unconfirmed < 0 {
+		unconfirmed = 0
 	}
 
-	return uint64(totalBalance), nil
-}
-
-// GetConfirmedBalance returns only confirmed balance
-func (m *mempoolProvider) GetConfirmedBalance(ctx context.Context, address string) (uint64, error) {
-	ctx = chainkit.WithProviderName(ctx, m.Name())
-
-	url := fmt.Sprintf("%s/address/%s", m.baseURL, address)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return 0, &types.RequestError{Err: err, Message: "failed to create request"}
-	}
-
-	resp, err := m.httpClient.Do(req)
-	if err != nil {
-		return 0, &types.RequestError{Err: err, Message: "failed to fetch balance"}
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		body, _ := io.ReadAll(resp.Body)
-		return 0, &types.RequestError{Message: fmt.Sprintf("API returned status %d: %s", resp.StatusCode, string(body))}
-	}
-
-	var result struct {
-		ChainStats struct {
-			FundedTxoSum int64 `json:"funded_txo_sum"`
-			SpentTxoSum  int64 `json:"spent_txo_sum"`
-		} `json:"chain_stats"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return 0, &types.RequestError{Err: err, Message: "failed to decode response"}
-	}
-
-	balance := result.ChainStats.FundedTxoSum - result.ChainStats.SpentTxoSum
-	if balance < 0 {
-		return 0, nil
-	}
-
-	return uint64(balance), nil
-}
-
-// GetUnconfirmedBalance returns only unconfirmed (mempool) balance
-func (m *mempoolProvider) GetUnconfirmedBalance(ctx context.Context, address string) (uint64, error) {
-	ctx = chainkit.WithProviderName(ctx, m.Name())
-
-	url := fmt.Sprintf("%s/address/%s", m.baseURL, address)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return 0, &types.RequestError{Err: err, Message: "failed to create request"}
-	}
-
-	resp, err := m.httpClient.Do(req)
-	if err != nil {
-		return 0, &types.RequestError{Err: err, Message: "failed to fetch balance"}
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		body, _ := io.ReadAll(resp.Body)
-		return 0, &types.RequestError{Message: fmt.Sprintf("API returned status %d: %s", resp.StatusCode, string(body))}
-	}
-
-	var result struct {
-		MempoolStats struct {
-			FundedTxoSum int64 `json:"funded_txo_sum"`
-			SpentTxoSum  int64 `json:"spent_txo_sum"`
-		} `json:"mempool_stats"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return 0, &types.RequestError{Err: err, Message: "failed to decode response"}
-	}
-
-	balance := result.MempoolStats.FundedTxoSum - result.MempoolStats.SpentTxoSum
-	if balance < 0 {
-		return 0, nil
-	}
-
-	return uint64(balance), nil
+	return chainkit.Balance{
+		Confirmed:   uint64(confirmed),
+		Unconfirmed: uint64(unconfirmed),
+		Total:       uint64(confirmed + unconfirmed),
+	}, nil
 }
 
 // GetTxFees returns fee tiers for different confirmation targets
 func (m *mempoolProvider) GetTxFees(ctx context.Context) ([]types.FeeTier, error) {
-	ctx = chainkit.WithProviderName(ctx, m.Name())
 
 	url := fmt.Sprintf("%s/v1/fees/recommended", m.baseURL)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
@@ -360,7 +277,6 @@ func (m *mempoolProvider) GetTxFee(ctx context.Context, priority types.FeePriori
 
 // PushTx broadcasts a signed transaction to the network
 func (m *mempoolProvider) PushTx(ctx context.Context, rawTx []byte) (string, error) {
-	ctx = chainkit.WithProviderName(ctx, m.Name())
 
 	// Convert raw bytes to hex string
 	hexTx := hex.EncodeToString(rawTx)
@@ -401,7 +317,7 @@ func (m *mempoolProvider) CheckHealth(ctx context.Context) chainkit.HealthStatus
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return chainkit.HealthStatus{
-			Status:         "error",
+			Status: chainkit.HealthLevelDown,
 			ResponseTimeMs: 0,
 			ResponseTimeUs: 0,
 			Error:          err.Error(),
@@ -416,7 +332,7 @@ func (m *mempoolProvider) CheckHealth(ctx context.Context) chainkit.HealthStatus
 
 	if err != nil {
 		return chainkit.HealthStatus{
-			Status:         "down",
+			Status: chainkit.HealthLevelDown,
 			ResponseTimeMs: responseTimeMs,
 			ResponseTimeUs: responseTimeUs,
 			Error:          err.Error(),
@@ -425,17 +341,17 @@ func (m *mempoolProvider) CheckHealth(ctx context.Context) chainkit.HealthStatus
 	}
 	defer resp.Body.Close()
 
-	status := "healthy"
+	status := chainkit.HealthLevelHealthy
 	errorMsg := ""
 
 	if resp.StatusCode >= 500 {
-		status = "down"
+		status = chainkit.HealthLevelDown
 		errorMsg = fmt.Sprintf("HTTP %d", resp.StatusCode)
 	} else if resp.StatusCode >= 400 {
-		status = "degraded"
+		status = chainkit.HealthLevelDegraded
 		errorMsg = fmt.Sprintf("HTTP %d", resp.StatusCode)
 	} else if responseTimeMs > 2000 {
-		status = "degraded"
+		status = chainkit.HealthLevelDegraded
 		errorMsg = "slow response"
 	}
 
@@ -465,7 +381,6 @@ func (m *mempoolProvider) GetCapabilities() []chainkit.ProviderCapability {
 
 // GetUTXOs fetches unspent transaction outputs for a given address
 func (m *mempoolProvider) GetUTXOs(ctx context.Context, address string) ([]types.UTXO, error) {
-	ctx = chainkit.WithProviderName(ctx, m.Name())
 
 	url := fmt.Sprintf("%s/address/%s/utxo", m.baseURL, address)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
@@ -560,8 +475,7 @@ func (m *mempoolProvider) addressToScriptPubKey(address string) ([]byte, error) 
 }
 
 // GetTxStatus returns the confirmation status of a transaction
-func (m *mempoolProvider) GetTxStatus(ctx context.Context, txID string) (*chainkit.TxStatusResponse, error) {
-	ctx = chainkit.WithProviderName(ctx, m.Name())
+func (m *mempoolProvider) GetTxStatus(ctx context.Context, txID string) (*chainkit.TxConfirmationStatus, error) {
 
 	// Mempool.space API endpoint for transaction status
 	url := fmt.Sprintf("%s/tx/%s", m.baseURL, txID)
@@ -617,7 +531,7 @@ func (m *mempoolProvider) GetTxStatus(ctx context.Context, txID string) (*chaink
 		}
 	}
 
-	return &chainkit.TxStatusResponse{
+	return &chainkit.TxConfirmationStatus{
 		Confirmed:     txResp.Status.Confirmed,
 		Confirmations: confirmations,
 		BlockHeight:   txResp.Status.BlockHeight,

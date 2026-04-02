@@ -30,20 +30,8 @@ func (ps *ProviderSelector) ctxWithProvider(ctx context.Context) context.Context
 	return ctx
 }
 
-func (ps *ProviderSelector) GetBalance(ctx context.Context, address string, opts *GetBalanceOptions) (uint64, error) {
-	return ps.mixedProvider.GetBalance(ps.ctxWithProvider(ctx), address, opts)
-}
-
-func (ps *ProviderSelector) GetBalanceWithContext(ctx context.Context, address string, opts *GetBalanceOptions) (context.Context, uint64, error) {
-	return ps.mixedProvider.GetBalanceWithContext(ps.ctxWithProvider(ctx), address, opts)
-}
-
-func (ps *ProviderSelector) GetConfirmedBalance(ctx context.Context, address string) (uint64, error) {
-	return ps.mixedProvider.GetConfirmedBalance(ps.ctxWithProvider(ctx), address)
-}
-
-func (ps *ProviderSelector) GetUnconfirmedBalance(ctx context.Context, address string) (uint64, error) {
-	return ps.mixedProvider.GetUnconfirmedBalance(ps.ctxWithProvider(ctx), address)
+func (ps *ProviderSelector) GetBalance(ctx context.Context, address string) (Balance, error) {
+	return ps.mixedProvider.GetBalance(ps.ctxWithProvider(ctx), address)
 }
 
 func (ps *ProviderSelector) GetUTXOs(ctx context.Context, address string) ([]types.UTXO, error) {
@@ -94,6 +82,6 @@ func (ps *ProviderSelector) GetExchangeRates(ctx context.Context, coin types.Coi
 	return ps.mixedProvider.GetExchangeRates(ps.ctxWithProvider(ctx), coin)
 }
 
-func (ps *ProviderSelector) GetTxStatus(ctx context.Context, txID string) (*TxStatusResponse, error) {
+func (ps *ProviderSelector) GetTxStatus(ctx context.Context, txID string) (*TxConfirmationStatus, error) {
 	return ps.mixedProvider.GetTxStatus(ps.ctxWithProvider(ctx), txID)
 }

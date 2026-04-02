@@ -69,6 +69,21 @@ func (n BitcoinNetwork) String() string {
 	}
 }
 
+// BlockcypherChain returns the Blockcypher API chain identifier for this network.
+// Blockcypher supports mainnet ("main") and testnet3 ("test3") only; testnet4 is
+// mapped to "test3" as the closest equivalent. Returns ("", false) for unsupported
+// networks (regtest, simnet).
+func (n BitcoinNetwork) BlockcypherChain() (string, bool) {
+	switch n {
+	case BitcoinNetworkMainnet:
+		return "main", true
+	case BitcoinNetworkTestnet3, BitcoinNetworkTestnet4:
+		return "test3", true
+	default:
+		return "", false
+	}
+}
+
 type RequestError struct {
 	Message string `json:"message"`
 	Err     error  `json:"-"`
@@ -199,15 +214,15 @@ func abs(x int) int {
 	return x
 }
 
-type TxStatus struct {
+type TxState struct {
 	Status string `json:"status"`
 }
 
 var (
-	TxStatusFailed    = TxStatus{Status: "failed"}
-	TxStatusPending   = TxStatus{Status: "pending"}
-	TxStatusConfirmed = TxStatus{Status: "confirmed"}
-	TxStatusUnknown   = TxStatus{Status: "unknown"}
+	TxStateFailed    = TxState{Status: "failed"}
+	TxStatePending   = TxState{Status: "pending"}
+	TxStateConfirmed = TxState{Status: "confirmed"}
+	TxStateUnknown   = TxState{Status: "unknown"}
 )
 
 type TxEvent struct {
@@ -224,7 +239,7 @@ type SignedTx struct {
 	Outputs   []*TxOutput `json:"outputs"`
 	RawSigned []byte      `json:"raw_signed"` // Raw signed transaction bytes
 	Fee       uint64      `json:"fee"`        // Transaction fee in satoshis
-	Status    TxStatus    `json:"status"`     // Transaction status
+	Status    TxState     `json:"status"`     // Transaction status
 }
 
 type TxOutput struct {
@@ -313,7 +328,7 @@ type Tx struct {
 	Inputs  []*TxInput
 	Outputs []*TxOutput
 	Fee     uint64
-	Status  TxStatus
+	Status  TxState
 	// Params must be set to the network's chaincfg.Params so that Serialize and Hash
 	// can produce valid scriptPubKeys for the outputs. If nil, Serialize returns an error.
 	Params *chaincfg.Params
@@ -326,7 +341,7 @@ func (tx *Tx) MarshalJSON() ([]byte, error) {
 		Inputs  []*TxInput  `json:"inputs"`
 		Outputs []*TxOutput `json:"outputs"`
 		Fee     uint64      `json:"fee"`
-		Status  TxStatus    `json:"status"`
+		Status  TxState     `json:"status"`
 	}
 
 	jsonTx := JsonTx{

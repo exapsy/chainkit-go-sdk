@@ -93,7 +93,6 @@ func (p *metal) DeriveAddress(ctx context.Context, xpub string, index uint32, ch
 	case errors.Is(err, hdkeychain.ErrNotPrivExtKey):
 		return chainkit.DerivedAddress{
 			PublicKey: addr.EncodeAddress(),
-			Mode:      chainkit.PublicKeyOnly,
 		}, nil
 	default:
 		return chainkit.DerivedAddress{}, err
@@ -107,7 +106,6 @@ func (p *metal) DeriveAddress(ctx context.Context, xpub string, index uint32, ch
 	return chainkit.DerivedAddress{
 		PublicKey:  addr.EncodeAddress(),
 		PrivateKey: wif.String(),
-		Mode:       chainkit.PublicAndPrivateKey,
 	}, nil
 }
 
@@ -340,7 +338,7 @@ func (p *metal) CreateTransaction(_ context.Context, utxos []types.UTXO, outputs
 		Version: 2, // Default to version 2
 		Inputs:  make([]*types.TxInput, 0, len(utxos)),
 		Outputs: make([]*types.TxOutput, 0, len(outputs)),
-		Status:  types.TxStatusPending,
+		Status:  types.TxStatePending,
 		Params:  netParams,
 	}
 
@@ -385,7 +383,7 @@ func (p *metal) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 	responseTimeUs := responseDuration.Microseconds()
 
 	return chainkit.HealthStatus{
-		Status:         "healthy",
+		Status: chainkit.HealthLevelHealthy,
 		ResponseTimeMs: responseTimeMs,
 		ResponseTimeUs: responseTimeUs,
 		HTTPStatus:     0, // Not applicable for local provider

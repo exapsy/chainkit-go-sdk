@@ -11,22 +11,22 @@ import (
 	"time"
 )
 
-// ProviderManager manages multiple providers for a single interface with advanced failure tracking
-type ProviderManager struct {
-	providers        []ProviderConfig
+// providerManager manages multiple providers for a single interface with advanced failure tracking
+type providerManager struct {
+	providers        []providerConfig
 	selectedProvider string // Specific provider to use, if any
-	failureTracker   map[string]*FailureInfo
-	circuitStates    map[string]*CircuitState
-	healthStates     map[string]*HealthState
-	rateLimitStates  map[string]*RateLimitState
+	failureTracker   map[string]*failureInfo
+	circuitStates    map[string]*circuitState
+	healthStates     map[string]*healthState
+	rateLimitStates  map[string]*rateLimitState
 	mutex            sync.RWMutex
 	config           ChainConfig
-	semaphore        chan struct{}         // For controlling concurrency
+	semaphore        chan struct{}      // For controlling concurrency
 	selector         selectionStrategy // Selection strategy for choosing providers
 }
 
-// FailureInfo tracks failure statistics for a provider with enhanced retry tracking
-type FailureInfo struct {
+// failureInfo tracks failure statistics for a provider with enhanced retry tracking
+type failureInfo struct {
 	ConsecutiveFailures int
 	LastFailureTime     time.Time
 	IsTemporarilyDown   bool
@@ -36,8 +36,8 @@ type FailureInfo struct {
 	RetryCount          int
 }
 
-// CircuitState tracks circuit breaker state for a provider
-type CircuitState struct {
+// circuitState tracks circuit breaker state for a provider
+type circuitState struct {
 	State                string // "CLOSED", "OPEN", "HALF_OPEN"
 	LastStateChange      time.Time
 	ConsecutiveFailures  int
@@ -46,8 +46,8 @@ type CircuitState struct {
 	LastFailureTime      time.Time
 }
 
-// HealthState tracks health check state for a provider
-type HealthState struct {
+// healthState tracks health check state for a provider
+type healthState struct {
 	IsHealthy                  bool
 	LastHealthCheck            time.Time
 	ConsecutiveHealthyChecks   int
@@ -55,17 +55,17 @@ type HealthState struct {
 	LastError                  error
 }
 
-// RateLimitState tracks rate limiting state for a provider
-type RateLimitState struct {
+// rateLimitState tracks rate limiting state for a provider
+type rateLimitState struct {
 	RequestTimes []time.Time // Sliding window of request timestamps
 	BurstTokens  int         // Available burst tokens
 	LastRefill   time.Time   // Last time burst tokens were refilled
 	mutex        sync.Mutex  // Protects the rate limit state
 }
 
-// NewRateLimitState creates a new rate limit state
-func NewRateLimitState(burstSize int) *RateLimitState {
-	return &RateLimitState{
+// newRateLimitState creates a new rate limit state
+func newRateLimitState(burstSize int) *rateLimitState {
+	return &rateLimitState{
 		RequestTimes: make([]time.Time, 0),
 		BurstTokens:  burstSize,
 		LastRefill:   time.Now(),
@@ -73,7 +73,7 @@ func NewRateLimitState(burstSize int) *RateLimitState {
 }
 
 // CanMakeRequest checks if a request can be made without violating rate limits
-func (rls *RateLimitState) CanMakeRequest(config RateLimitConfig, now time.Time) bool {
+func (rls *rateLimitState) CanMakeRequest(config RateLimitConfig, now time.Time) bool {
 	if !config.Enabled {
 		return true
 	}
@@ -121,7 +121,7 @@ func (rls *RateLimitState) CanMakeRequest(config RateLimitConfig, now time.Time)
 
 // RecordRequest records a dispatched request for rate-window tracking.
 // Burst token consumption is handled atomically inside CanMakeRequest.
-func (rls *RateLimitState) RecordRequest(config RateLimitConfig, now time.Time) {
+func (rls *rateLimitState) RecordRequest(config RateLimitConfig, now time.Time) {
 	if !config.Enabled {
 		return
 	}
@@ -141,16 +141,16 @@ func minInt(a, b int) int {
 	return b
 }
 
-// NewProviderManager creates a new provider manager with chain configuration
-func NewProviderManager(config ChainConfig) *ProviderManager {
+// newProviderManager creates a new provider manager with chain configuration
+func newProviderManager(config ChainConfig) *providerManager {
 	semaphore := make(chan struct{}, config.MaxConcurrency)
 
-	pm := &ProviderManager{
-		providers:       make([]ProviderConfig, 0),
-		failureTracker:  make(map[string]*FailureInfo),
-		circuitStates:   make(map[string]*CircuitState),
-		healthStates:    make(map[string]*HealthState),
-		rateLimitStates: make(map[string]*RateLimitState),
+	pm := &providerManager{
+		providers:       make([]providerConfig, 0),
+		failureTracker:  make(map[string]*failureInfo),
+		circuitStates:   make(map[string]*circuitState),
+		healthStates:    make(map[string]*healthState),
+		rateLimitStates: make(map[string]*rateLimitState),
 		config:          config,
 		semaphore:       semaphore,
 	}
@@ -166,7 +166,7 @@ func NewProviderManager(config ChainConfig) *ProviderManager {
 	return pm
 }
 
-func (pm *ProviderManager) HasProvider(name string) bool {
+func (pm *providerManager) HasProvider(name string) bool {
 	pm.mutex.RLock()
 	defer pm.mutex.RUnlock()
 
@@ -178,8 +178,8 @@ func (pm *ProviderManager) HasProvider(name string) bool {
 	return false
 }
 
-// AddProvider adds a provider with priority
-func (pm *ProviderManager) AddProvider(provider interface{}, priority int, name string) {
+// addProvider adds a provider with priority
+func (pm *providerManager) addProvider(provider interface{}, priority int, name string) {
 	pm.mutex.Lock()
 	defer pm.mutex.Unlock()
 
@@ -188,23 +188,23 @@ func (pm *ProviderManager) AddProvider(provider interface{}, priority int, name 
 		return
 	}
 
-	pm.providers = append(pm.providers, ProviderConfig{
+	pm.providers = append(pm.providers, providerConfig{
 		Provider: provider,
 		Priority: priority,
 		Name:     name,
 	})
 
 	// Initialize tracking states for new provider
-	pm.failureTracker[name] = &FailureInfo{}
-	pm.circuitStates[name] = &CircuitState{
+	pm.failureTracker[name] = &failureInfo{}
+	pm.circuitStates[name] = &circuitState{
 		State:           "CLOSED",
 		LastStateChange: time.Now(),
 	}
-	pm.healthStates[name] = &HealthState{
+	pm.healthStates[name] = &healthState{
 		IsHealthy:       true,
 		LastHealthCheck: time.Now(),
 	}
-	pm.rateLimitStates[name] = NewRateLimitState(pm.config.RateLimit.BurstSize)
+	pm.rateLimitStates[name] = newRateLimitState(pm.config.RateLimit.BurstSize)
 
 	// Sort by priority (lower number = higher priority)
 	sort.Slice(pm.providers, func(i, j int) bool {
@@ -212,14 +212,14 @@ func (pm *ProviderManager) AddProvider(provider interface{}, priority int, name 
 	})
 }
 
-// GetAvailableProviders returns providers that are currently available (considering circuit breaker, health, etc.)
+// getAvailableProviders returns providers that are currently available (considering circuit breaker, health, etc.)
 // The providers are ordered according to the configured selection strategy.
 // Uses a write lock because isProviderAvailable may transition circuit state (OPEN → HALF_OPEN).
-func (pm *ProviderManager) GetAvailableProviders() []ProviderConfig {
+func (pm *providerManager) getAvailableProviders() []providerConfig {
 	pm.mutex.Lock()
 	defer pm.mutex.Unlock()
 
-	available := make([]ProviderConfig, 0)
+	available := make([]providerConfig, 0)
 	now := time.Now()
 
 	for _, provider := range pm.providers {
@@ -237,13 +237,13 @@ func (pm *ProviderManager) GetAvailableProviders() []ProviderConfig {
 	return available
 }
 
-func (pm *ProviderManager) SetSelectedProvider(name string) {
+func (pm *providerManager) setSelectedProvider(name string) {
 	pm.mutex.Lock()
 	defer pm.mutex.Unlock()
 	pm.selectedProvider = name
 }
 
-func (pm *ProviderManager) GetSelectedProvider() ProviderConfig {
+func (pm *providerManager) getSelectedProvider() providerConfig {
 	pm.mutex.RLock()
 	defer pm.mutex.RUnlock()
 	for _, provider := range pm.providers {
@@ -251,26 +251,26 @@ func (pm *ProviderManager) GetSelectedProvider() ProviderConfig {
 			return provider
 		}
 	}
-	return ProviderConfig{}
+	return providerConfig{}
 }
 
-func (pm *ProviderManager) ClearSelectedProvider() {
+func (pm *providerManager) clearSelectedProvider() {
 	pm.mutex.Lock()
 	defer pm.mutex.Unlock()
 	pm.selectedProvider = ""
 }
 
-func (pm *ProviderManager) RunOp(ctx context.Context, op func(ctx context.Context, provider interface{}) (interface{}, error)) (data interface{}, providerName string, duration time.Duration, err error) {
+func (pm *providerManager) runOp(ctx context.Context, op func(ctx context.Context, provider interface{}) (interface{}, error)) (data interface{}, providerName string, duration time.Duration, err error) {
 	var lastErr error
 
-	// GetAvailableProviders already filters out circuit-open / rate-limited providers.
-	providers := pm.GetAvailableProviders()
+	// getAvailableProviders already filters out circuit-open / rate-limited providers.
+	providers := pm.getAvailableProviders()
 	if len(providers) == 0 {
 		return nil, "", 0, fmt.Errorf("%w: no available providers", ErrProviderNotConfigured)
 	}
 
 	// Narrow to a single provider if one is pinned — either via context or via
-	// SetSelectedProvider. We always filter from the already-available list so we
+	// setSelectedProvider. We always filter from the already-available list so we
 	// never try a provider that the circuit breaker has disabled.
 	if name, found := GetProviderName(ctx); found {
 		// Context-pinned provider: find it inside the available list.
@@ -278,9 +278,9 @@ func (pm *ProviderManager) RunOp(ctx context.Context, op func(ctx context.Contex
 		if !ok {
 			return nil, "", 0, fmt.Errorf("context-specified provider %s is not available", name)
 		}
-		providers = []ProviderConfig{pinned}
+		providers = []providerConfig{pinned}
 	} else {
-		// Persistent pin set via SetSelectedProvider.
+		// Persistent pin set via setSelectedProvider.
 		pm.mutex.RLock()
 		sel := pm.selectedProvider
 		pm.mutex.RUnlock()
@@ -289,23 +289,23 @@ func (pm *ProviderManager) RunOp(ctx context.Context, op func(ctx context.Contex
 			if !ok {
 				return nil, "", 0, fmt.Errorf("selected provider %s is not available", sel)
 			}
-			providers = []ProviderConfig{pinned}
+			providers = []providerConfig{pinned}
 		}
 	}
 
 	retry := pm.config.RetryPolicy
 
-	for _, providerConfig := range providers {
-		result, opErr := pm.attemptWithRetry(ctx, providerConfig, op, retry)
+	for _, providerCfg := range providers {
+		result, opErr := pm.attemptWithRetry(ctx, providerCfg, op, retry)
 		if opErr == nil {
 			if pm.selector != nil {
-				pm.selector.RecordAttempt(providerConfig.Name, providerConfig.Priority)
+				pm.selector.RecordAttempt(providerCfg.Name, providerCfg.Priority)
 			}
 			// duration is captured inside attemptWithRetry; surface the total wall time.
-			return result, providerConfig.Name, 0, nil
+			return result, providerCfg.Name, 0, nil
 		}
 
-		recordFailedProvider(ctx, providerConfig.Name)
+		recordFailedProvider(ctx, providerCfg.Name)
 		lastErr = opErr
 	}
 
@@ -313,10 +313,10 @@ func (pm *ProviderManager) RunOp(ctx context.Context, op func(ctx context.Contex
 }
 
 // attemptWithRetry runs op against a single provider, retrying according to
-// policy. It records success/failure on the ProviderManager after each attempt.
-func (pm *ProviderManager) attemptWithRetry(
+// policy. It records success/failure on the providerManager after each attempt.
+func (pm *providerManager) attemptWithRetry(
 	ctx context.Context,
-	providerConfig ProviderConfig,
+	providerCfg providerConfig,
 	op func(ctx context.Context, provider interface{}) (interface{}, error),
 	policy RetryPolicy,
 ) (interface{}, error) {
@@ -336,13 +336,13 @@ func (pm *ProviderManager) attemptWithRetry(
 			}
 		}
 
-		result, err := op(ctx, providerConfig.Provider)
+		result, err := op(ctx, providerCfg.Provider)
 		if err == nil {
-			pm.RecordSuccess(providerConfig.Name)
+			pm.recordSuccess(providerCfg.Name)
 			return result, nil
 		}
 
-		pm.RecordFailure(providerConfig.Name)
+		pm.recordFailure(providerCfg.Name)
 		lastErr = err
 	}
 
@@ -351,7 +351,7 @@ func (pm *ProviderManager) attemptWithRetry(
 
 // retryDelay computes the exponential-backoff delay for the given attempt number
 // (1-based: attempt=1 is the first retry after the initial failure).
-func (pm *ProviderManager) retryDelay(policy RetryPolicy, attempt int) time.Duration {
+func (pm *providerManager) retryDelay(policy RetryPolicy, attempt int) time.Duration {
 	delay := float64(policy.InitialDelay) * math.Pow(policy.BackoffMultiplier, float64(attempt-1))
 	if policy.MaxDelay > 0 && time.Duration(delay) > policy.MaxDelay {
 		delay = float64(policy.MaxDelay)
@@ -363,7 +363,7 @@ func (pm *ProviderManager) retryDelay(policy RetryPolicy, attempt int) time.Dura
 	return time.Duration(delay)
 }
 
-func (pm *ProviderManager) GetProvider(name string) (ProviderConfig, bool) {
+func (pm *providerManager) getProvider(name string) (providerConfig, bool) {
 	pm.mutex.RLock()
 	defer pm.mutex.RUnlock()
 
@@ -374,11 +374,11 @@ func (pm *ProviderManager) GetProvider(name string) (ProviderConfig, bool) {
 			return provider, true
 		}
 	}
-	return ProviderConfig{}, false
+	return providerConfig{}, false
 }
 
 // isProviderAvailable checks if a provider is currently available based on all criteria
-func (pm *ProviderManager) isProviderAvailable(providerName string, now time.Time) bool {
+func (pm *providerManager) isProviderAvailable(providerName string, now time.Time) bool {
 	// Check legacy failure tracking
 	if failure, exists := pm.failureTracker[providerName]; exists {
 		if failure.IsTemporarilyDown {
@@ -394,19 +394,19 @@ func (pm *ProviderManager) isProviderAvailable(providerName string, now time.Tim
 
 	// Check circuit breaker state
 	if pm.config.CircuitBreaker.Enabled {
-		if circuitState, exists := pm.circuitStates[providerName]; exists {
-			if circuitState.State == "OPEN" {
+		if cs, exists := pm.circuitStates[providerName]; exists {
+			if cs.State == "OPEN" {
 				// Check if timeout has passed to try half-open
-				if now.Sub(circuitState.LastStateChange) >= pm.config.CircuitBreaker.Timeout {
-					circuitState.State = "HALF_OPEN"
-					circuitState.LastStateChange = now
-					circuitState.HalfOpenCalls = 0
+				if now.Sub(cs.LastStateChange) >= pm.config.CircuitBreaker.Timeout {
+					cs.State = "HALF_OPEN"
+					cs.LastStateChange = now
+					cs.HalfOpenCalls = 0
 				} else {
 					return false // Still open
 				}
-			} else if circuitState.State == "HALF_OPEN" {
+			} else if cs.State == "HALF_OPEN" {
 				// Limit calls in half-open state
-				if circuitState.HalfOpenCalls >= pm.config.CircuitBreaker.HalfOpenMaxCalls {
+				if cs.HalfOpenCalls >= pm.config.CircuitBreaker.HalfOpenMaxCalls {
 					return false
 				}
 			}
@@ -415,8 +415,8 @@ func (pm *ProviderManager) isProviderAvailable(providerName string, now time.Tim
 
 	// Check health state
 	if pm.config.HealthCheck.Enabled {
-		if healthState, exists := pm.healthStates[providerName]; exists {
-			if !healthState.IsHealthy {
+		if hs, exists := pm.healthStates[providerName]; exists {
+			if !hs.IsHealthy {
 				return false
 			}
 		}
@@ -424,8 +424,8 @@ func (pm *ProviderManager) isProviderAvailable(providerName string, now time.Tim
 
 	// Check rate limit state
 	if pm.config.RateLimit.Enabled {
-		if rateLimitState, exists := pm.rateLimitStates[providerName]; exists {
-			if !rateLimitState.CanMakeRequest(pm.config.RateLimit, now) {
+		if rls, exists := pm.rateLimitStates[providerName]; exists {
+			if !rls.CanMakeRequest(pm.config.RateLimit, now) {
 				return false
 			}
 		}
@@ -434,8 +434,8 @@ func (pm *ProviderManager) isProviderAvailable(providerName string, now time.Tim
 	return true
 }
 
-// RecordSuccess resets failure tracking and updates circuit breaker state
-func (pm *ProviderManager) RecordSuccess(providerName string) {
+// recordSuccess resets failure tracking and updates circuit breaker state
+func (pm *providerManager) recordSuccess(providerName string) {
 	pm.mutex.Lock()
 	defer pm.mutex.Unlock()
 
@@ -449,29 +449,29 @@ func (pm *ProviderManager) RecordSuccess(providerName string) {
 
 	// Update circuit breaker state
 	if pm.config.CircuitBreaker.Enabled {
-		if circuitState, exists := pm.circuitStates[providerName]; exists {
-			circuitState.ConsecutiveFailures = 0
-			circuitState.ConsecutiveSuccesses++
+		if cs, exists := pm.circuitStates[providerName]; exists {
+			cs.ConsecutiveFailures = 0
+			cs.ConsecutiveSuccesses++
 
-			if circuitState.State == "HALF_OPEN" &&
-				circuitState.ConsecutiveSuccesses >= pm.config.CircuitBreaker.SuccessThreshold {
-				circuitState.State = "CLOSED"
-				circuitState.LastStateChange = time.Now()
-				circuitState.HalfOpenCalls = 0
+			if cs.State == "HALF_OPEN" &&
+				cs.ConsecutiveSuccesses >= pm.config.CircuitBreaker.SuccessThreshold {
+				cs.State = "CLOSED"
+				cs.LastStateChange = time.Now()
+				cs.HalfOpenCalls = 0
 			}
 		}
 	}
 
 	// Update rate limit state
 	if pm.config.RateLimit.Enabled {
-		if rateLimitState, exists := pm.rateLimitStates[providerName]; exists {
-			rateLimitState.RecordRequest(pm.config.RateLimit, time.Now())
+		if rls, exists := pm.rateLimitStates[providerName]; exists {
+			rls.RecordRequest(pm.config.RateLimit, time.Now())
 		}
 	}
 }
 
-// RecordFailure records a failure and updates circuit breaker state
-func (pm *ProviderManager) RecordFailure(providerName string) {
+// recordFailure records a failure and updates circuit breaker state
+func (pm *providerManager) recordFailure(providerName string) {
 	pm.mutex.Lock()
 	defer pm.mutex.Unlock()
 
@@ -488,7 +488,7 @@ func (pm *ProviderManager) RecordFailure(providerName string) {
 			failure.IsTemporarilyDown = true
 		}
 	} else {
-		pm.failureTracker[providerName] = &FailureInfo{
+		pm.failureTracker[providerName] = &failureInfo{
 			ConsecutiveFailures: 1,
 			LastFailureTime:     now,
 			TotalFailures:       1,
@@ -498,33 +498,33 @@ func (pm *ProviderManager) RecordFailure(providerName string) {
 
 	// Update circuit breaker state
 	if pm.config.CircuitBreaker.Enabled {
-		if circuitState, exists := pm.circuitStates[providerName]; exists {
-			circuitState.ConsecutiveFailures++
-			circuitState.ConsecutiveSuccesses = 0
-			circuitState.LastFailureTime = now
+		if cs, exists := pm.circuitStates[providerName]; exists {
+			cs.ConsecutiveFailures++
+			cs.ConsecutiveSuccesses = 0
+			cs.LastFailureTime = now
 
-			if circuitState.State == "HALF_OPEN" {
-				circuitState.HalfOpenCalls++
+			if cs.State == "HALF_OPEN" {
+				cs.HalfOpenCalls++
 			}
 
 			// Open circuit if failure threshold reached
-			if circuitState.ConsecutiveFailures >= pm.config.CircuitBreaker.FailureThreshold {
-				circuitState.State = "OPEN"
-				circuitState.LastStateChange = now
+			if cs.ConsecutiveFailures >= pm.config.CircuitBreaker.FailureThreshold {
+				cs.State = "OPEN"
+				cs.LastStateChange = now
 			}
 		}
 	}
 }
 
-// GetChainConfig returns the configuration for this provider chain
-func (pm *ProviderManager) GetChainConfig() ChainConfig {
+// getChainConfig returns the configuration for this provider chain
+func (pm *providerManager) getChainConfig() ChainConfig {
 	pm.mutex.RLock()
 	defer pm.mutex.RUnlock()
 	return pm.config
 }
 
-// UpdateChainConfig updates the configuration for this provider chain
-func (pm *ProviderManager) UpdateChainConfig(config ChainConfig) {
+// updateChainConfig updates the configuration for this provider chain
+func (pm *providerManager) updateChainConfig(config ChainConfig) {
 	pm.mutex.Lock()
 	defer pm.mutex.Unlock()
 
@@ -547,8 +547,8 @@ func (pm *ProviderManager) UpdateChainConfig(config ChainConfig) {
 	}
 }
 
-// AcquireConcurrencySlot attempts to acquire a concurrency slot with timeout
-func (pm *ProviderManager) AcquireConcurrencySlot(ctx context.Context) error {
+// acquireConcurrencySlot attempts to acquire a concurrency slot with timeout
+func (pm *providerManager) acquireConcurrencySlot(ctx context.Context) error {
 	select {
 	case pm.semaphore <- struct{}{}:
 		return nil
@@ -559,8 +559,8 @@ func (pm *ProviderManager) AcquireConcurrencySlot(ctx context.Context) error {
 	}
 }
 
-// ReleaseConcurrencySlot releases a concurrency slot
-func (pm *ProviderManager) ReleaseConcurrencySlot() {
+// releaseConcurrencySlot releases a concurrency slot
+func (pm *providerManager) releaseConcurrencySlot() {
 	select {
 	case <-pm.semaphore:
 	default:
@@ -569,7 +569,7 @@ func (pm *ProviderManager) ReleaseConcurrencySlot() {
 }
 
 // GetProviderStats returns comprehensive statistics for a provider
-func (pm *ProviderManager) GetProviderStats(providerName string) map[string]interface{} {
+func (pm *providerManager) GetProviderStats(providerName string) map[string]interface{} {
 	pm.mutex.RLock()
 	defer pm.mutex.RUnlock()
 
@@ -584,37 +584,37 @@ func (pm *ProviderManager) GetProviderStats(providerName string) map[string]inte
 		stats["retry_count"] = failure.RetryCount
 	}
 
-	if circuit, exists := pm.circuitStates[providerName]; exists {
-		stats["circuit_state"] = circuit.State
-		stats["circuit_consecutive_failures"] = circuit.ConsecutiveFailures
-		stats["circuit_consecutive_successes"] = circuit.ConsecutiveSuccesses
-		stats["circuit_last_state_change"] = circuit.LastStateChange
-		stats["circuit_half_open_calls"] = circuit.HalfOpenCalls
+	if cs, exists := pm.circuitStates[providerName]; exists {
+		stats["circuit_state"] = cs.State
+		stats["circuit_consecutive_failures"] = cs.ConsecutiveFailures
+		stats["circuit_consecutive_successes"] = cs.ConsecutiveSuccesses
+		stats["circuit_last_state_change"] = cs.LastStateChange
+		stats["circuit_half_open_calls"] = cs.HalfOpenCalls
 	}
 
-	if health, exists := pm.healthStates[providerName]; exists {
-		stats["is_healthy"] = health.IsHealthy
-		stats["last_health_check"] = health.LastHealthCheck
-		stats["consecutive_healthy_checks"] = health.ConsecutiveHealthyChecks
-		stats["consecutive_unhealthy_checks"] = health.ConsecutiveUnhealthyChecks
-		if health.LastError != nil {
-			stats["last_health_error"] = health.LastError.Error()
+	if hs, exists := pm.healthStates[providerName]; exists {
+		stats["is_healthy"] = hs.IsHealthy
+		stats["last_health_check"] = hs.LastHealthCheck
+		stats["consecutive_healthy_checks"] = hs.ConsecutiveHealthyChecks
+		stats["consecutive_unhealthy_checks"] = hs.ConsecutiveUnhealthyChecks
+		if hs.LastError != nil {
+			stats["last_health_error"] = hs.LastError.Error()
 		}
 	}
 
-	if rateLimit, exists := pm.rateLimitStates[providerName]; exists {
-		rateLimit.mutex.Lock()
-		stats["rate_limit_request_times"] = append([]time.Time(nil), rateLimit.RequestTimes...)
-		stats["rate_limit_burst_tokens"] = rateLimit.BurstTokens
-		stats["rate_limit_last_refill"] = rateLimit.LastRefill
-		rateLimit.mutex.Unlock()
+	if rls, exists := pm.rateLimitStates[providerName]; exists {
+		rls.mutex.Lock()
+		stats["rate_limit_request_times"] = append([]time.Time(nil), rls.RequestTimes...)
+		stats["rate_limit_burst_tokens"] = rls.BurstTokens
+		stats["rate_limit_last_refill"] = rls.LastRefill
+		rls.mutex.Unlock()
 	}
 
 	return stats
 }
 
 // SetSelectionStrategy updates the selection strategy for this provider manager
-func (pm *ProviderManager) SetSelectionStrategy(strategy SelectionStrategy) error {
+func (pm *providerManager) SetSelectionStrategy(strategy SelectionStrategy) error {
 	pm.mutex.Lock()
 	defer pm.mutex.Unlock()
 
@@ -633,25 +633,25 @@ func (pm *ProviderManager) SetSelectionStrategy(strategy SelectionStrategy) erro
 }
 
 // findProviderByName returns the first provider in list whose name matches (case-insensitive).
-func findProviderByName(list []ProviderConfig, name string) (ProviderConfig, bool) {
+func findProviderByName(list []providerConfig, name string) (providerConfig, bool) {
 	lower := strings.ToLower(name)
 	for _, p := range list {
 		if strings.ToLower(p.Name) == lower {
 			return p, true
 		}
 	}
-	return ProviderConfig{}, false
+	return providerConfig{}, false
 }
 
 // GetSelectionStrategy returns the current selection strategy
-func (pm *ProviderManager) GetSelectionStrategy() SelectionStrategy {
+func (pm *providerManager) GetSelectionStrategy() SelectionStrategy {
 	pm.mutex.RLock()
 	defer pm.mutex.RUnlock()
 	return pm.config.SelectionStrategy
 }
 
-// ResetSelectionState resets the selection strategy state (useful for round-robin, etc.)
-func (pm *ProviderManager) ResetSelectionState() {
+// resetSelectionState resets the selection strategy state (useful for round-robin, etc.)
+func (pm *providerManager) resetSelectionState() {
 	pm.mutex.Lock()
 	defer pm.mutex.Unlock()
 
