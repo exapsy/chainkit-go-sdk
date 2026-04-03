@@ -21,7 +21,7 @@ type providerManager struct {
 	rateLimitStates  map[string]*rateLimitState
 	mutex            sync.RWMutex
 	config           ChainConfig
-	semaphore        chan struct{}      // For controlling concurrency
+	semaphore        chan struct{}     // For controlling concurrency
 	selector         selectionStrategy // Selection strategy for choosing providers
 }
 
@@ -237,29 +237,6 @@ func (pm *providerManager) getAvailableProviders() []providerConfig {
 	return available
 }
 
-func (pm *providerManager) setSelectedProvider(name string) {
-	pm.mutex.Lock()
-	defer pm.mutex.Unlock()
-	pm.selectedProvider = name
-}
-
-func (pm *providerManager) getSelectedProvider() providerConfig {
-	pm.mutex.RLock()
-	defer pm.mutex.RUnlock()
-	for _, provider := range pm.providers {
-		if provider.Name == pm.selectedProvider {
-			return provider
-		}
-	}
-	return providerConfig{}
-}
-
-func (pm *providerManager) clearSelectedProvider() {
-	pm.mutex.Lock()
-	defer pm.mutex.Unlock()
-	pm.selectedProvider = ""
-}
-
 func (pm *providerManager) runOp(ctx context.Context, op func(ctx context.Context, provider interface{}) (interface{}, error)) (data interface{}, providerName string, duration time.Duration, err error) {
 	var lastErr error
 
@@ -361,20 +338,6 @@ func (pm *providerManager) retryDelay(policy RetryPolicy, attempt int) time.Dura
 		delay *= 1 + 0.2*rand.Float64()
 	}
 	return time.Duration(delay)
-}
-
-func (pm *providerManager) getProvider(name string) (providerConfig, bool) {
-	pm.mutex.RLock()
-	defer pm.mutex.RUnlock()
-
-	name = strings.ToLower(name)
-
-	for _, provider := range pm.providers {
-		if strings.ToLower(provider.Name) == name {
-			return provider, true
-		}
-	}
-	return providerConfig{}, false
 }
 
 // isProviderAvailable checks if a provider is currently available based on all criteria
@@ -516,13 +479,6 @@ func (pm *providerManager) recordFailure(providerName string) {
 	}
 }
 
-// getChainConfig returns the configuration for this provider chain
-func (pm *providerManager) getChainConfig() ChainConfig {
-	pm.mutex.RLock()
-	defer pm.mutex.RUnlock()
-	return pm.config
-}
-
 // updateChainConfig updates the configuration for this provider chain
 func (pm *providerManager) updateChainConfig(config ChainConfig) {
 	pm.mutex.Lock()
@@ -544,27 +500,6 @@ func (pm *providerManager) updateChainConfig(config ChainConfig) {
 			selector = newPriorityOnlySelector()
 		}
 		pm.selector = selector
-	}
-}
-
-// acquireConcurrencySlot attempts to acquire a concurrency slot with timeout
-func (pm *providerManager) acquireConcurrencySlot(ctx context.Context) error {
-	select {
-	case pm.semaphore <- struct{}{}:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-time.After(pm.config.Timeout):
-		return fmt.Errorf("timeout waiting for concurrency slot")
-	}
-}
-
-// releaseConcurrencySlot releases a concurrency slot
-func (pm *providerManager) releaseConcurrencySlot() {
-	select {
-	case <-pm.semaphore:
-	default:
-		// Slot was already released or never acquired
 	}
 }
 
@@ -648,14 +583,4 @@ func (pm *providerManager) GetSelectionStrategy() SelectionStrategy {
 	pm.mutex.RLock()
 	defer pm.mutex.RUnlock()
 	return pm.config.SelectionStrategy
-}
-
-// resetSelectionState resets the selection strategy state (useful for round-robin, etc.)
-func (pm *providerManager) resetSelectionState() {
-	pm.mutex.Lock()
-	defer pm.mutex.Unlock()
-
-	if pm.selector != nil {
-		pm.selector.Reset()
-	}
 }

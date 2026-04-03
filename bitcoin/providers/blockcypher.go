@@ -3,7 +3,6 @@ package providers
 import (
 	"context"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -165,7 +164,7 @@ func (p *blockcypher) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 
 	if p.Client.Chain == "" || p.Client.Coin == "" {
 		return chainkit.HealthStatus{
-			Status: chainkit.HealthLevelDown,
+			Status:         chainkit.HealthLevelDown,
 			ResponseTimeMs: 0,
 			ResponseTimeUs: 0,
 			Error:          "Blockcypher.com only supports Bitcoin mainnet and testnet3",
@@ -183,7 +182,7 @@ func (p *blockcypher) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return chainkit.HealthStatus{
-			Status: chainkit.HealthLevelDown,
+			Status:         chainkit.HealthLevelDown,
 			ResponseTimeMs: 0,
 			ResponseTimeUs: 0,
 			Error:          err.Error(),
@@ -198,7 +197,7 @@ func (p *blockcypher) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 
 	if err != nil {
 		return chainkit.HealthStatus{
-			Status: chainkit.HealthLevelDown,
+			Status:         chainkit.HealthLevelDown,
 			ResponseTimeMs: responseTimeMs,
 			ResponseTimeUs: responseTimeUs,
 			Error:          err.Error(),
@@ -240,17 +239,4 @@ func (p *blockcypher) GetCapabilities() []chainkit.ProviderCapability {
 		chainkit.CapabilityTxStatusFetching,
 		chainkit.CapabilityUTXOFetching,
 	}
-}
-
-func getBalanceByUTXOs(utxos []types.UTXO) (uint64, error) {
-	if len(utxos) == 0 {
-		return 0, errors.New("no UTXOs provided")
-	}
-
-	totalBalance := uint64(0)
-	for _, utxo := range utxos {
-		totalBalance += uint64(utxo.Amount)
-	}
-
-	return totalBalance, nil
 }
