@@ -19,6 +19,8 @@ type BlockcypherProvider interface {
 	chainkit.BalanceFetcher
 	chainkit.UTXOFetcher
 	chainkit.AddressValidator
+	chainkit.TxBroadcaster
+	chainkit.TxStatusFetcher
 }
 
 type blockcypher struct {
@@ -121,6 +123,42 @@ func (p *blockcypher) GetBalance(ctx context.Context, address string) (chainkit.
 	}, nil
 }
 
+// PushTx broadcasts a signed transaction to the Bitcoin network via BlockCypher's txs/push endpoint.
+// rawTx must be the serialized transaction bytes; the method hex-encodes them before sending.
+// Returns the txid on success.
+func (p *blockcypher) PushTx(ctx context.Context, rawTx []byte) (string, error) {
+	hexTx := hex.EncodeToString(rawTx)
+
+	skel, err := p.Client.PushTX(hexTx)
+	if err != nil {
+		return "", fmt.Errorf("failed to broadcast transaction via BlockCypher: %w", err)
+	}
+
+	return skel.Trans.Hash, nil
+}
+
+// GetTxStatus returns the confirmation status of a transaction via BlockCypher's txs/{txid} endpoint.
+func (p *blockcypher) GetTxStatus(ctx context.Context, txID string) (*chainkit.TxConfirmationStatus, error) {
+	tx, err := p.Client.GetTX(txID, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch tx status from BlockCypher: %w", err)
+	}
+
+	confirmed := !tx.Confirmed.IsZero()
+
+	blockHeight := int64(tx.BlockHeight)
+	if blockHeight < 0 {
+		blockHeight = 0
+	}
+
+	return &chainkit.TxConfirmationStatus{
+		Confirmed:     confirmed,
+		Confirmations: tx.Confirmations,
+		BlockHeight:   blockHeight,
+		BlockHash:     tx.BlockHash,
+	}, nil
+}
+
 // CheckHealth performs a health check on the BlockCypher API
 func (p *blockcypher) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 	start := time.Now()
@@ -196,9 +234,11 @@ func (p *blockcypher) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 // GetCapabilities returns the list of capabilities this provider supports
 func (p *blockcypher) GetCapabilities() []chainkit.ProviderCapability {
 	return []chainkit.ProviderCapability{
-		chainkit.CapabilityBalanceFetching,
-		chainkit.CapabilityUTXOFetching,
 		chainkit.CapabilityAddressValidation,
+		chainkit.CapabilityBalanceFetching,
+		chainkit.CapabilityTxBroadcast,
+		chainkit.CapabilityTxStatusFetching,
+		chainkit.CapabilityUTXOFetching,
 	}
 }
 

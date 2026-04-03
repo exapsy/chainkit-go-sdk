@@ -2,6 +2,7 @@ package providers
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,6 +29,8 @@ type BlockstreamProvider interface {
 	chainkit.BalanceFetcher
 	chainkit.AddressValidator
 	chainkit.FeeRecommender
+	chainkit.TxBroadcaster
+	chainkit.TxStatusFetcher
 }
 
 type blockstream struct {
@@ -308,6 +311,122 @@ func (p *blockstream) callAPI(
 	}
 }
 
+// callAPIWithStringBody is like callAPI but sends a request body (POST).
+// The body string is re-wrapped on each retry so token refresh works correctly.
+func (p *blockstream) callAPIWithStringBody(
+	ctx context.Context,
+	method string,
+	endpoint string,
+	body string,
+	contentType string,
+) ([]byte, error) {
+	fullURL := p.baseURL + endpoint
+	retried := false
+
+	for {
+		token, err := p.GetAccessToken(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get access token: %w", err)
+		}
+
+		req, err := http.NewRequestWithContext(ctx, method, fullURL, strings.NewReader(body))
+		if err != nil {
+			return nil, fmt.Errorf("error creating request: %w", err)
+		}
+
+		req.Header.Add("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", contentType)
+
+		resp, err := blockstreamHTTPClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("error executing request: %w", err)
+		}
+
+		switch resp.StatusCode {
+		case http.StatusOK:
+			respBody, err := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if err != nil {
+				return nil, fmt.Errorf("error reading response body: %w", err)
+			}
+			return respBody, nil
+		case http.StatusUnauthorized:
+			resp.Body.Close()
+			if retried {
+				return nil, errors.New("unauthorized: token refresh did not resolve the issue")
+			}
+			retried = true
+			p.tokenMu.Lock()
+			p.accessToken = ""
+			p.tokenMu.Unlock()
+		case http.StatusNotFound:
+			resp.Body.Close()
+			return nil, errors.New("transaction not found")
+		case http.StatusTooManyRequests:
+			resp.Body.Close()
+			return nil, errors.New("rate limit exceeded")
+		default:
+			respBody, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			return nil, fmt.Errorf("API request failed with status code: %d: %s", resp.StatusCode, string(respBody))
+		}
+	}
+}
+
+// PushTx broadcasts a signed transaction to the Bitcoin network via Esplora POST /tx.
+// rawTx must be the serialized transaction bytes; the method hex-encodes them before sending.
+// Returns the txid on success.
+func (p *blockstream) PushTx(ctx context.Context, rawTx []byte) (string, error) {
+	hexTx := hex.EncodeToString(rawTx)
+
+	respBody, err := p.callAPIWithStringBody(ctx, http.MethodPost, "/tx", hexTx, "text/plain")
+	if err != nil {
+		return "", fmt.Errorf("failed to broadcast transaction via Blockstream: %w", err)
+	}
+
+	return strings.TrimSpace(string(respBody)), nil
+}
+
+// GetTxStatus returns the confirmation status of a transaction via Esplora GET /tx/{txid}/status.
+func (p *blockstream) GetTxStatus(ctx context.Context, txID string) (*chainkit.TxConfirmationStatus, error) {
+	body, err := p.callAPI(ctx, "GET", fmt.Sprintf("/tx/%s/status", txID), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch tx status from Blockstream: %w", err)
+	}
+
+	var statusResp struct {
+		Confirmed   bool   `json:"confirmed"`
+		BlockHeight int64  `json:"block_height"`
+		BlockHash   string `json:"block_hash"`
+		BlockTime   int64  `json:"block_time"`
+	}
+
+	if err = json.Unmarshal(body, &statusResp); err != nil {
+		return nil, fmt.Errorf("failed to parse tx status response: %w", err)
+	}
+
+	confirmations := 0
+	if statusResp.Confirmed && statusResp.BlockHeight > 0 {
+		tipBody, tipErr := p.callAPI(ctx, "GET", "/blocks/tip/height", nil)
+		if tipErr == nil {
+			var tipHeight int64
+			if json.Unmarshal(tipBody, &tipHeight) == nil && tipHeight > 0 {
+				confirmations = int(tipHeight - statusResp.BlockHeight + 1)
+			}
+		}
+		if confirmations == 0 {
+			confirmations = 1
+		}
+	}
+
+	return &chainkit.TxConfirmationStatus{
+		Confirmed:     statusResp.Confirmed,
+		Confirmations: confirmations,
+		BlockHeight:   statusResp.BlockHeight,
+		BlockHash:     statusResp.BlockHash,
+	}, nil
+}
+
 // CheckHealth performs a health check on the Blockstream API
 func (p *blockstream) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 	start := time.Now()
@@ -466,6 +585,8 @@ func (p *blockstream) GetCapabilities() []chainkit.ProviderCapability {
 		chainkit.CapabilityAddressValidation,
 		chainkit.CapabilityBalanceFetching,
 		chainkit.CapabilityFeeRecommending,
+		chainkit.CapabilityTxBroadcast,
+		chainkit.CapabilityTxStatusFetching,
 		chainkit.CapabilityUTXOFetching,
 	}
 }
