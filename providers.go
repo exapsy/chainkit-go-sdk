@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/exapsy/chainkit/bitcoin/types"
+	"github.com/exapsy/chainkit/scoring"
 )
 
 // MixedProviders implements BlockchainProvider using multiple provider chains with fallback support
@@ -21,6 +22,7 @@ type MixedProviders struct {
 	balanceFetchers   *providerManager
 	rateFetchers      *providerManager
 	metricsRecorder   MetricsRecorder
+	scoringEngine     *scoring.Engine
 }
 
 func (m *MixedProviders) Name() string {
@@ -152,4 +154,67 @@ func (m *MixedProviders) GetTxStatus(ctx context.Context, txID string) (*TxConfi
 	return executeWithFallbackAndMetrics(ctx, m.txStatusFetchers, m.metricsRecorder, "GetTxStatus", func(provider interface{}) (*TxConfirmationStatus, error) {
 		return provider.(TxStatusFetcher).GetTxStatus(ctx, txID)
 	})
+}
+
+// StopScoring stops the adaptive scoring engine's background processes.
+// Call this when you're done using the MixedProviders to clean up goroutines.
+func (m *MixedProviders) StopScoring() {
+	if m.scoringEngine != nil {
+		m.scoringEngine.Stop()
+	}
+}
+
+// GetScoringEngine returns the scoring engine if adaptive scoring is enabled.
+// Returns nil if adaptive scoring was not configured.
+func (m *MixedProviders) GetScoringEngine() *scoring.Engine {
+	return m.scoringEngine
+}
+
+// GetScoringStats returns scoring statistics for all providers.
+// Returns nil if adaptive scoring was not configured.
+func (m *MixedProviders) GetScoringStats() []scoring.ProviderScoreStats {
+	if m.scoringEngine == nil {
+		return nil
+	}
+	return m.scoringEngine.GetAllProviderStats()
+}
+
+// GetProviderScoringStats returns scoring statistics for a specific provider.
+// Returns nil if adaptive scoring was not configured or provider not found.
+func (m *MixedProviders) GetProviderScoringStats(providerName string) *scoring.ProviderScoreStats {
+	if m.scoringEngine == nil {
+		return nil
+	}
+	return m.scoringEngine.GetProviderStats(providerName)
+}
+
+// IsScoringEnabled returns true if adaptive scoring is enabled.
+func (m *MixedProviders) IsScoringEnabled() bool {
+	return m.scoringEngine != nil && m.scoringEngine.IsEnabled()
+}
+
+// SetScoringEnabled enables or disables adaptive scoring at runtime.
+// Does nothing if no scoring engine was configured.
+func (m *MixedProviders) SetScoringEnabled(enabled bool) {
+	if m.scoringEngine != nil {
+		m.scoringEngine.SetEnabled(enabled)
+	}
+}
+
+// ResetScoring resets all provider scores to their base values.
+// Useful for testing or when you want to start fresh.
+func (m *MixedProviders) ResetScoring() {
+	if m.scoringEngine != nil {
+		m.scoringEngine.Reset()
+	}
+}
+
+// GetSortedProviders returns provider names sorted by their current effective score.
+// The first provider in the list has the highest score (best performance).
+// Returns nil if adaptive scoring was not configured.
+func (m *MixedProviders) GetSortedProviders() []string {
+	if m.scoringEngine == nil {
+		return nil
+	}
+	return m.scoringEngine.GetSortedProviders()
 }

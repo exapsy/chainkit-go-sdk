@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/exapsy/chainkit/scoring"
 )
 
 // providerManager manages multiple providers for a single interface with advanced failure tracking
@@ -23,6 +25,7 @@ type providerManager struct {
 	config           ChainConfig
 	semaphore        chan struct{}     // For controlling concurrency
 	selector         selectionStrategy // Selection strategy for choosing providers
+	scoringEngine    *scoring.Engine   // Optional adaptive scoring engine
 }
 
 // failureInfo tracks failure statistics for a provider with enhanced retry tracking
@@ -431,6 +434,15 @@ func (pm *providerManager) recordSuccess(providerName string) {
 			rls.RecordRequest(pm.config.RateLimit, time.Now())
 		}
 	}
+
+	// Record success event in scoring engine
+	if pm.scoringEngine != nil {
+		pm.scoringEngine.RecordEvent(scoring.ScoreEvent{
+			Type:      scoring.EventOperationSuccess,
+			Provider:  providerName,
+			Timestamp: time.Now(),
+		})
+	}
 }
 
 // recordFailure records a failure and updates circuit breaker state
@@ -476,6 +488,15 @@ func (pm *providerManager) recordFailure(providerName string) {
 				cs.LastStateChange = now
 			}
 		}
+	}
+
+	// Record failure event in scoring engine
+	if pm.scoringEngine != nil {
+		pm.scoringEngine.RecordEvent(scoring.ScoreEvent{
+			Type:      scoring.EventOperationFailed,
+			Provider:  providerName,
+			Timestamp: now,
+		})
 	}
 }
 
@@ -583,4 +604,69 @@ func (pm *providerManager) GetSelectionStrategy() SelectionStrategy {
 	pm.mutex.RLock()
 	defer pm.mutex.RUnlock()
 	return pm.config.SelectionStrategy
+}
+
+// SetScoringEngine sets the adaptive scoring engine and switches to adaptive selection
+func (pm *providerManager) SetScoringEngine(engine *scoring.Engine) {
+	pm.mutex.Lock()
+	defer pm.mutex.Unlock()
+
+	pm.scoringEngine = engine
+
+	if engine != nil {
+		// Register all current providers with the scoring engine
+		for _, p := range pm.providers {
+			engine.RegisterProvider(p.Name, p.Priority)
+		}
+
+		// Switch to adaptive selector
+		pm.selector = newAdaptiveSelector(engine)
+		pm.config.SelectionStrategy = SelectionStrategyAdaptive
+	}
+}
+
+// GetScoringEngine returns the current scoring engine (may be nil)
+func (pm *providerManager) GetScoringEngine() *scoring.Engine {
+	pm.mutex.RLock()
+	defer pm.mutex.RUnlock()
+	return pm.scoringEngine
+}
+
+// recordFailureWithError records a failure with error classification for scoring
+func (pm *providerManager) recordFailureWithError(providerName string, err error, responseTime time.Duration) {
+	// First, record the basic failure
+	pm.recordFailure(providerName)
+
+	// Then, if we have a scoring engine, classify the error
+	if pm.scoringEngine != nil {
+		event := scoring.ClassifyOperationEvent(providerName, responseTime, err)
+		pm.scoringEngine.RecordEvent(event)
+	}
+}
+
+// recordSuccessWithLatency records a success with latency for scoring
+func (pm *providerManager) recordSuccessWithLatency(providerName string, responseTime time.Duration) {
+	// First, record the basic success
+	pm.recordSuccess(providerName)
+
+	// Then, if we have a scoring engine, record the latency
+	if pm.scoringEngine != nil {
+		event := scoring.ScoreEvent{
+			Type:         scoring.EventOperationSuccess,
+			Provider:     providerName,
+			Timestamp:    time.Now(),
+			ResponseTime: responseTime,
+		}
+		pm.scoringEngine.RecordEvent(event)
+	}
+}
+
+// RecordHealthCheckResult records a health check result for scoring
+func (pm *providerManager) RecordHealthCheckResult(providerName string, httpStatus int, responseTime time.Duration, err error) {
+	if pm.scoringEngine == nil {
+		return
+	}
+
+	event := scoring.ClassifyHealthCheckEvent(providerName, httpStatus, responseTime, err)
+	pm.scoringEngine.RecordEvent(event)
 }

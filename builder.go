@@ -1,6 +1,12 @@
 // Package chainkit provides blockchain interaction capabilities
 package chainkit
 
+import (
+	"context"
+
+	"github.com/exapsy/chainkit/scoring"
+)
+
 // MixedProvidersBuilder implements the builder pattern for creating MixedProviders
 type MixedProvidersBuilder struct {
 	addressGenerators *providerManager
@@ -18,6 +24,7 @@ type MixedProvidersBuilder struct {
 
 	chainConfigs    map[string]ChainConfig
 	metricsRecorder MetricsRecorder
+	scoringEngine   *scoring.Engine
 }
 
 // NewMixedProvidersBuilder creates a new builder with default configurations
@@ -83,6 +90,38 @@ func (b *MixedProvidersBuilder) WithMetricsRecorder(recorder MetricsRecorder) *M
 	} else {
 		b.metricsRecorder = recorder
 	}
+	return b
+}
+
+// WithAdaptiveScoring enables adaptive provider scoring with dynamic priority adjustment.
+// The scoring engine automatically adjusts provider priorities based on:
+//   - Health check results (429, auth failures, timeouts)
+//   - Operation success/failure rates
+//   - Response time relative to other providers
+//
+// Options can be passed to customize scoring behavior:
+//
+//	client := chainkit.NewMixedProvidersBuilder().
+//	    WithTxBroadcasterChain(...).
+//	    WithAdaptiveScoring(
+//	        scoring.WithRateLimitPenalty(30.0),  // Higher penalty for 429s
+//	        scoring.WithDecayRate(0.2),          // Faster recovery
+//	    ).
+//	    Build()
+//
+// When adaptive scoring is enabled, the initial priority values still matter as they
+// determine the base score (priority 1 = 100 points, priority 2 = 90 points, etc.),
+// but actual provider selection will be dynamically adjusted based on performance.
+func (b *MixedProvidersBuilder) WithAdaptiveScoring(opts ...scoring.ScoringOption) *MixedProvidersBuilder {
+	b.scoringEngine = scoring.NewEngine(opts...)
+	return b
+}
+
+// WithAdaptiveScoringEngine sets a pre-configured scoring engine.
+// Use this when you need to share a scoring engine across multiple builders
+// or when you need more control over engine lifecycle.
+func (b *MixedProvidersBuilder) WithAdaptiveScoringEngine(engine *scoring.Engine) *MixedProvidersBuilder {
+	b.scoringEngine = engine
 	return b
 }
 
@@ -405,7 +444,39 @@ func (b *MixedProvidersBuilder) WithTxStatusFetcherChain(fetchers ...TxStatusFet
 // Not all roles need to be registered. If you call a method whose role has no
 // registered provider you will receive an [ErrProviderNotConfigured] error at
 // that point — no upfront validation is performed.
+//
+// If adaptive scoring was enabled via [WithAdaptiveScoring], the scoring engine
+// will be started automatically. Call [MixedProviders.StopScoring] when done to
+// clean up background goroutines.
 func (b *MixedProvidersBuilder) Build() BlockchainProvider {
+	// Apply scoring engine to all provider managers if enabled
+	if b.scoringEngine != nil {
+		managers := []*providerManager{
+			b.addressGenerators,
+			b.addressValidators,
+			b.feeRecommenders,
+			b.feeEstimators,
+			b.txBroadcasters,
+			b.txAssemblers,
+			b.txSizers,
+			b.txSigners,
+			b.txStatusFetchers,
+			b.utxoFetchers,
+			b.balanceFetchers,
+			b.rateFetchers,
+		}
+
+		for _, manager := range managers {
+			if manager != nil {
+				manager.SetScoringEngine(b.scoringEngine)
+			}
+		}
+
+		// Start the scoring engine with a background context
+		// Users can call StopScoring() to clean up
+		b.scoringEngine.Start(context.Background())
+	}
+
 	return &MixedProviders{
 		addressGenerators: b.addressGenerators,
 		addressValidators: b.addressValidators,
@@ -420,5 +491,6 @@ func (b *MixedProvidersBuilder) Build() BlockchainProvider {
 		balanceFetchers:   b.balanceFetchers,
 		rateFetchers:      b.rateFetchers,
 		metricsRecorder:   b.metricsRecorder,
+		scoringEngine:     b.scoringEngine,
 	}
 }

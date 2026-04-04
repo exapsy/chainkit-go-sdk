@@ -6,6 +6,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/exapsy/chainkit/scoring"
 )
 
 // selectionStrategy is an interface for provider selection strategies
@@ -243,6 +245,62 @@ func (s *leastLoadedSelector) Reset() {
 	s.providerStats = make(map[string]*providerLoadStats)
 }
 
+// adaptiveSelector implements adaptive selection based on dynamic scoring
+type adaptiveSelector struct {
+	engine *scoring.Engine
+	mutex  sync.RWMutex
+}
+
+func newAdaptiveSelector(engine *scoring.Engine) selectionStrategy {
+	if engine == nil {
+		// Fallback to priority-only if no engine provided
+		return newPriorityOnlySelector()
+	}
+	return &adaptiveSelector{
+		engine: engine,
+	}
+}
+
+func (s *adaptiveSelector) SelectProviders(available []providerConfig) []providerConfig {
+	if len(available) == 0 {
+		return available
+	}
+
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	// Sort providers by effective score (highest first)
+	sorted := make([]providerConfig, len(available))
+	copy(sorted, available)
+
+	// Simple bubble sort by score
+	for i := 0; i < len(sorted)-1; i++ {
+		for j := i + 1; j < len(sorted); j++ {
+			scoreI := s.engine.GetEffectiveScore(sorted[i].Name)
+			scoreJ := s.engine.GetEffectiveScore(sorted[j].Name)
+			if scoreI < scoreJ {
+				sorted[i], sorted[j] = sorted[j], sorted[i]
+			}
+		}
+	}
+
+	return sorted
+}
+
+func (s *adaptiveSelector) RecordAttempt(providerName string, priority int) {
+	// Adaptive selector doesn't need to track attempts manually
+	// Scoring is handled by the engine through event recording
+}
+
+func (s *adaptiveSelector) Reset() {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	// Reset the scoring engine
+	if s.engine != nil {
+		s.engine.Reset()
+	}
+}
+
 func newSelectionStrategy(strategy SelectionStrategy, ft map[string]*failureInfo) (selectionStrategy, error) {
 	switch strategy {
 	case SelectionStrategyPriorityOnly:
@@ -253,6 +311,9 @@ func newSelectionStrategy(strategy SelectionStrategy, ft map[string]*failureInfo
 		return newRandomSelector(), nil
 	case SelectionStrategyLeastLoaded:
 		return newLeastLoadedSelector(ft), nil
+	case SelectionStrategyAdaptive:
+		// Adaptive strategy requires engine to be set separately via setAdaptiveEngine
+		return newPriorityOnlySelector(), nil
 	default:
 		return nil, fmt.Errorf("unknown selection strategy: %s", strategy)
 	}

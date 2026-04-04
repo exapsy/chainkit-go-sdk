@@ -40,6 +40,9 @@ const (
 
 	// SelectionStrategyLeastLoaded selects the least loaded provider (future)
 	SelectionStrategyLeastLoaded SelectionStrategy = "least_loaded"
+
+	// SelectionStrategyAdaptive uses dynamic scoring to adaptively select providers based on performance
+	SelectionStrategyAdaptive SelectionStrategy = "adaptive"
 )
 
 // String returns the string representation of the selection strategy
@@ -50,7 +53,7 @@ func (s SelectionStrategy) String() string {
 // IsValid checks if the selection strategy is valid
 func (s SelectionStrategy) IsValid() bool {
 	switch s {
-	case SelectionStrategyPriorityOnly, SelectionStrategyRoundRobin, SelectionStrategyRandom, SelectionStrategyLeastLoaded:
+	case SelectionStrategyPriorityOnly, SelectionStrategyRoundRobin, SelectionStrategyRandom, SelectionStrategyLeastLoaded, SelectionStrategyAdaptive:
 		return true
 	default:
 		return false
