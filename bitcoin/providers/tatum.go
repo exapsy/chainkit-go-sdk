@@ -14,32 +14,32 @@ import (
 	"github.com/exapsy/chainkit/bitcoin/types"
 )
 
-// RPCProvider talks to a Bitcoin Core-compatible JSON-RPC node.
-// It supports broadcasting transactions, fetching transaction status,
-// and health checks. It does NOT support address balance or UTXO
-// queries (those require an indexer, which standard nodes do not have).
-//
-// Use this for providers that expose a raw Bitcoin node — e.g. Tatum's
-// gateway nodes (bitcoin-mainnet.gateway.tatum.io, etc.).
-type RPCProvider interface {
+// TatumProvider talks to Tatum's Bitcoin gateway nodes via JSON-RPC.
+// Supports broadcasting transactions and fetching transaction status.
+// Does NOT support address balance or UTXO queries (no indexer on gateway nodes).
+type TatumProvider interface {
 	chainkit.BlockchainBaseProvider
 	chainkit.TxBroadcaster
 	chainkit.TxStatusFetcher
 	chainkit.HealthChecker
 }
 
-type rpcProvider struct {
+type tatumProvider struct {
 	network    types.BitcoinNetwork
 	baseURL    string
 	apiKey     string
 	httpClient *http.Client
 }
 
-// NewRPC creates an RPCProvider that communicates with a Bitcoin Core
-// JSON-RPC node. apiKey is sent as the x-api-key header; leave empty
-// if the node requires no authentication.
-func NewRPC(network types.BitcoinNetwork, baseURL string, apiKey string) RPCProvider {
-	return &rpcProvider{
+// NewTatum creates a TatumProvider that communicates with a Tatum gateway node
+// via JSON-RPC. The API key is sent as the x-api-key header.
+//
+// Gateway URLs by network:
+//   - mainnet:  https://bitcoin-mainnet.gateway.tatum.io
+//   - testnet3: https://bitcoin-testnet.gateway.tatum.io
+//   - testnet4: https://bitcoin-testnet4.gateway.tatum.io
+func NewTatum(network types.BitcoinNetwork, baseURL string, apiKey string) TatumProvider {
+	return &tatumProvider{
 		network:    network,
 		baseURL:    baseURL,
 		apiKey:     apiKey,
@@ -47,17 +47,17 @@ func NewRPC(network types.BitcoinNetwork, baseURL string, apiKey string) RPCProv
 	}
 }
 
-func (r *rpcProvider) Name() string {
+func (t *tatumProvider) Name() string {
 	return "Tatum"
 }
 
-type rpcRequest struct {
+type tatumRPCRequest struct {
 	Method string      `json:"method"`
 	Params interface{} `json:"params"`
 	ID     int         `json:"id"`
 }
 
-type rpcResponse struct {
+type tatumRPCResponse struct {
 	Result json.RawMessage `json:"result"`
 	Error  *struct {
 		Code    int    `json:"code"`
@@ -66,22 +66,22 @@ type rpcResponse struct {
 	ID int `json:"id"`
 }
 
-func (r *rpcProvider) call(ctx context.Context, method string, params interface{}) (json.RawMessage, error) {
-	body, err := json.Marshal(rpcRequest{Method: method, Params: params, ID: 1})
+func (t *tatumProvider) call(ctx context.Context, method string, params interface{}) (json.RawMessage, error) {
+	body, err := json.Marshal(tatumRPCRequest{Method: method, Params: params, ID: 1})
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal RPC request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.baseURL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, t.baseURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if r.apiKey != "" {
-		req.Header.Set("x-api-key", r.apiKey)
+	if t.apiKey != "" {
+		req.Header.Set("x-api-key", t.apiKey)
 	}
 
-	resp, err := r.httpClient.Do(req)
+	resp, err := t.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
@@ -93,10 +93,10 @@ func (r *rpcProvider) call(ctx context.Context, method string, params interface{
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("node returned HTTP %d: %s", resp.StatusCode, string(respBody))
+		return nil, fmt.Errorf("gateway returned HTTP %d: %s", resp.StatusCode, string(respBody))
 	}
 
-	var rpcResp rpcResponse
+	var rpcResp tatumRPCResponse
 	if err = json.Unmarshal(respBody, &rpcResp); err != nil {
 		return nil, fmt.Errorf("failed to parse RPC response: %w", err)
 	}
@@ -109,10 +109,10 @@ func (r *rpcProvider) call(ctx context.Context, method string, params interface{
 }
 
 // PushTx broadcasts a signed transaction via sendrawtransaction.
-func (r *rpcProvider) PushTx(ctx context.Context, rawTx []byte) (string, error) {
-	result, err := r.call(ctx, "sendrawtransaction", []string{hex.EncodeToString(rawTx)})
+func (t *tatumProvider) PushTx(ctx context.Context, rawTx []byte) (string, error) {
+	result, err := t.call(ctx, "sendrawtransaction", []string{hex.EncodeToString(rawTx)})
 	if err != nil {
-		return "", fmt.Errorf("failed to broadcast transaction: %w", err)
+		return "", fmt.Errorf("failed to broadcast transaction via Tatum: %w", err)
 	}
 
 	var txID string
@@ -124,10 +124,10 @@ func (r *rpcProvider) PushTx(ctx context.Context, rawTx []byte) (string, error) 
 }
 
 // GetTxStatus returns the confirmation status of a transaction via getrawtransaction.
-func (r *rpcProvider) GetTxStatus(ctx context.Context, txID string) (*chainkit.TxConfirmationStatus, error) {
-	result, err := r.call(ctx, "getrawtransaction", []interface{}{txID, true})
+func (t *tatumProvider) GetTxStatus(ctx context.Context, txID string) (*chainkit.TxConfirmationStatus, error) {
+	result, err := t.call(ctx, "getrawtransaction", []interface{}{txID, true})
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch tx status: %w", err)
+		return nil, fmt.Errorf("failed to fetch tx status from Tatum: %w", err)
 	}
 
 	var tx struct {
@@ -164,10 +164,10 @@ func (r *rpcProvider) GetTxStatus(ctx context.Context, txID string) (*chainkit.T
 }
 
 // CheckHealth performs a health check via getblockchaininfo.
-func (r *rpcProvider) CheckHealth(ctx context.Context) chainkit.HealthStatus {
+func (t *tatumProvider) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 	start := time.Now()
 
-	result, err := r.call(ctx, "getblockchaininfo", []interface{}{})
+	result, err := t.call(ctx, "getblockchaininfo", []interface{}{})
 	dur := time.Since(start)
 	ms := dur.Milliseconds()
 	us := dur.Microseconds()
@@ -213,7 +213,7 @@ func (r *rpcProvider) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 }
 
 // GetCapabilities returns the capabilities this provider supports.
-func (r *rpcProvider) GetCapabilities() []chainkit.ProviderCapability {
+func (t *tatumProvider) GetCapabilities() []chainkit.ProviderCapability {
 	return []chainkit.ProviderCapability{
 		chainkit.CapabilityTxBroadcast,
 		chainkit.CapabilityTxStatusFetching,
