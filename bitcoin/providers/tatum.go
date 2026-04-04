@@ -38,9 +38,18 @@ type tatum struct {
 }
 
 // NewTatum creates a TatumProvider for the given network.
-// If baseURL is empty it defaults to the public Tatum V3 Bitcoin API.
+// If baseURL is empty it defaults to the public Tatum V3 Bitcoin mainnet API.
+//
+// Tatum's V3 API only exposes a mainnet Bitcoin endpoint; there is no official
+// testnet URL. Passing a non-mainnet network without an explicit baseURL will
+// return a provider whose data operations always return an error, while
+// CheckHealth and GetCapabilities still work normally so the provider doesn't
+// silently degrade the health picture.
 func NewTatum(network types.BitcoinNetwork, baseURL string, apiKey string) TatumProvider {
 	if baseURL == "" {
+		if network != types.BitcoinNetworkMainnet {
+			return &tatumUnsupported{network: network}
+		}
 		baseURL = tatumDefaultBaseURL
 	}
 	return &tatum{
@@ -48,6 +57,44 @@ func NewTatum(network types.BitcoinNetwork, baseURL string, apiKey string) Tatum
 		baseURL:    baseURL,
 		apiKey:     apiKey,
 		httpClient: &http.Client{Timeout: 30 * time.Second},
+	}
+}
+
+// tatumUnsupported is returned by NewTatum when no custom baseURL is provided
+// for a non-mainnet network. All data operations fail fast with a clear error.
+type tatumUnsupported struct {
+	network types.BitcoinNetwork
+}
+
+func (u *tatumUnsupported) Name() string { return "Tatum" }
+func (u *tatumUnsupported) unsupportedErr() error {
+	return fmt.Errorf("Tatum V3 API has no %s endpoint; provide a custom BaseURL to use Tatum on this network", u.network)
+}
+func (u *tatumUnsupported) GetBalance(_ context.Context, _ string) (chainkit.Balance, error) {
+	return chainkit.Balance{}, u.unsupportedErr()
+}
+func (u *tatumUnsupported) GetUTXOs(_ context.Context, _ string) ([]types.UTXO, error) {
+	return nil, u.unsupportedErr()
+}
+func (u *tatumUnsupported) PushTx(_ context.Context, _ []byte) (string, error) {
+	return "", u.unsupportedErr()
+}
+func (u *tatumUnsupported) GetTxStatus(_ context.Context, _ string) (*chainkit.TxConfirmationStatus, error) {
+	return nil, u.unsupportedErr()
+}
+func (u *tatumUnsupported) CheckHealth(_ context.Context) chainkit.HealthStatus {
+	return chainkit.HealthStatus{
+		Status:      chainkit.HealthLevelDown,
+		Error:       u.unsupportedErr().Error(),
+		LastChecked: time.Now(),
+	}
+}
+func (u *tatumUnsupported) GetCapabilities() []chainkit.ProviderCapability {
+	return []chainkit.ProviderCapability{
+		chainkit.CapabilityBalanceFetching,
+		chainkit.CapabilityTxBroadcast,
+		chainkit.CapabilityTxStatusFetching,
+		chainkit.CapabilityUTXOFetching,
 	}
 }
 
