@@ -42,7 +42,10 @@ func (b BitcoinNetwork) ChaincfgNetwork() (*chaincfg.Params, error) {
 	case BitcoinNetworkTestnet3:
 		return &chaincfg.TestNet3Params, nil
 	case BitcoinNetworkTestnet4:
-		return nil, fmt.Errorf("testnet4 is not yet supported; use testnet3 or regtest")
+		// Testnet4 uses the same address encoding and HD derivation parameters as
+		// testnet3 (same tb1/m/n prefixes, same BIP32 version bytes, same coin type).
+		// btcd has no dedicated Testnet4Params, so TestNet3Params is the correct substitute.
+		return &chaincfg.TestNet3Params, nil
 	case BitcoinNetworkRegtest:
 		return &chaincfg.RegressionNetParams, nil
 	case BitcoinNetworkSimnet:
