@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/exapsy/chainkit"
-	"github.com/exapsy/chainkit/bitcoin/types"
 )
 
 const (
@@ -28,18 +27,14 @@ type BlockchainComProvider interface {
 }
 
 type blockchainCom struct {
-	network    types.BitcoinNetwork
 	httpClient *http.Client
 }
 
-// NewBlockchainCom creates a BlockchainComProvider for the given network.
-// Returns nil for non-mainnet networks — blockchain.info only supports mainnet.
-func NewBlockchainCom(network types.BitcoinNetwork) BlockchainComProvider {
-	if network != types.BitcoinNetworkMainnet {
-		return nil
-	}
+// NewBlockchainCom creates a BlockchainComProvider.
+// blockchain.info only supports mainnet; callers are responsible for only
+// registering this provider when running on mainnet.
+func NewBlockchainCom() BlockchainComProvider {
 	return &blockchainCom{
-		network:    network,
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 	}
 }
