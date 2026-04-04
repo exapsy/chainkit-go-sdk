@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/exapsy/chainkit"
@@ -15,13 +17,14 @@ import (
 )
 
 // TatumProvider talks to Tatum's Bitcoin gateway nodes via JSON-RPC.
-// Supports broadcasting transactions and fetching transaction status.
+// Supports broadcasting transactions, fetching transaction status, and fee estimation.
 // Does NOT support address balance or UTXO queries (no indexer on gateway nodes).
 type TatumProvider interface {
 	chainkit.BlockchainBaseProvider
 	chainkit.TxBroadcaster
 	chainkit.TxStatusFetcher
 	chainkit.HealthChecker
+	chainkit.FeeRecommender
 }
 
 type tatumProvider struct {
@@ -217,5 +220,80 @@ func (t *tatumProvider) GetCapabilities() []chainkit.ProviderCapability {
 	return []chainkit.ProviderCapability{
 		chainkit.CapabilityTxBroadcast,
 		chainkit.CapabilityTxStatusFetching,
+		chainkit.CapabilityFeeRecommending,
 	}
+}
+
+// estimateFeeForTarget calls estimatesmartfee for the given confirmation target
+// and returns a FeeTier with FeeRate in sat/vByte.
+func (t *tatumProvider) estimateFeeForTarget(ctx context.Context, targetBlocks int) (types.FeeTier, error) {
+	result, err := t.call(ctx, "estimatesmartfee", []interface{}{targetBlocks})
+	if err != nil {
+		return types.FeeTier{}, fmt.Errorf("estimatesmartfee(%d) failed: %w", targetBlocks, err)
+	}
+
+	var resp struct {
+		FeeRate float64  `json:"feerate"` // BTC/kB; negative when node lacks data
+		Blocks  int      `json:"blocks"`  // actual target the node used
+		Errors  []string `json:"errors"`  // non-fatal warnings from the node
+	}
+	if err = json.Unmarshal(result, &resp); err != nil {
+		return types.FeeTier{}, fmt.Errorf("failed to parse estimatesmartfee response: %w", err)
+	}
+
+	if len(resp.Errors) > 0 {
+		return types.FeeTier{}, fmt.Errorf("estimatesmartfee: %s", strings.Join(resp.Errors, "; "))
+	}
+
+	if resp.FeeRate <= 0 {
+		return types.FeeTier{}, fmt.Errorf("estimatesmartfee returned no data for target %d blocks", targetBlocks)
+	}
+
+	// Convert BTC/kB → sat/vByte: ×1e8 (BTC→sat) ÷1000 (kB→B)
+	satPerVByte := uint64(math.Round(resp.FeeRate * 1e8 / 1000))
+	if satPerVByte < 1 {
+		satPerVByte = 1
+	}
+
+	blocks := resp.Blocks
+	if blocks == 0 {
+		blocks = targetBlocks
+	}
+
+	return types.FeeTier{
+		FeeRate:     satPerVByte,
+		TargetBlock: blocks,
+	}, nil
+}
+
+// GetTxFees returns fee estimates for all standard priority levels.
+// Priorities that the node cannot estimate (insufficient data) are silently omitted.
+func (t *tatumProvider) GetTxFees(ctx context.Context) ([]types.FeeTier, error) {
+	priorities := []types.FeePriority{
+		types.FeePriorityFastest,
+		types.FeePriorityFast,
+		types.FeePriorityMedium,
+		types.FeePrioritySlow,
+		types.FeePriorityMinimum,
+	}
+
+	var tiers []types.FeeTier
+	for _, p := range priorities {
+		tier, err := t.estimateFeeForTarget(ctx, p.TargetBlock())
+		if err != nil {
+			continue
+		}
+		tiers = append(tiers, tier)
+	}
+
+	if len(tiers) == 0 {
+		return nil, fmt.Errorf("failed to estimate fees for any priority: node may lack enough data")
+	}
+
+	return tiers, nil
+}
+
+// GetTxFee returns the fee estimate for the requested priority level.
+func (t *tatumProvider) GetTxFee(ctx context.Context, priority types.FeePriority) (types.FeeTier, error) {
+	return t.estimateFeeForTarget(ctx, priority.TargetBlock())
 }
