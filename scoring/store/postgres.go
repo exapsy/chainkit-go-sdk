@@ -193,7 +193,7 @@ func (p *PostgresStore) GetScore(ctx context.Context, providerName string) (*Pro
 	}
 
 	// Deserialize latencies
-	if latenciesJSON != nil && len(latenciesJSON) > 0 {
+	if len(latenciesJSON) > 0 {
 		if err := json.Unmarshal(latenciesJSON, &data.RecentLatencies); err != nil {
 			// Log error but don't fail - latencies are optional
 			data.RecentLatencies = nil
@@ -326,8 +326,8 @@ func (p *PostgresStore) GetAllScores(ctx context.Context) ([]*ProviderScoreData,
 		}
 
 		// Deserialize latencies
-		if latenciesJSON != nil && len(latenciesJSON) > 0 {
-			json.Unmarshal(latenciesJSON, &data.RecentLatencies)
+		if len(latenciesJSON) > 0 {
+			_ = json.Unmarshal(latenciesJSON, &data.RecentLatencies)
 		}
 
 		scores = append(scores, &data)
@@ -364,7 +364,7 @@ func (p *PostgresStore) SetScores(ctx context.Context, data []*ProviderScoreData
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	// Prepare statement for batch insert
 	query := fmt.Sprintf(`

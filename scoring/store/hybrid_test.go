@@ -96,8 +96,8 @@ func setupHybridStoreTest(t *testing.T) (*HybridStore, func()) {
 	// Cleanup function
 	cleanup := func() {
 		hybridStore.Close()
-		postgresContainer.Terminate(ctx)
-		redisContainer.Terminate(ctx)
+		_ = postgresContainer.Terminate(ctx)
+		_ = redisContainer.Terminate(ctx)
 	}
 
 	return hybridStore, cleanup
@@ -195,7 +195,7 @@ func TestHybridStore_CacheMiss_PopulatesCache(t *testing.T) {
 
 	// Invalidate cache to simulate miss
 	store.InvalidateAll()
-	store.cache.DeleteScore(ctx, data.Name)
+	_ = store.cache.DeleteScore(ctx, data.Name)
 
 	// Read from hybrid store (should miss cache, hit primary, populate cache)
 	retrieved, err := store.GetScore(ctx, data.Name)
@@ -355,7 +355,7 @@ func TestHybridStore_InvalidateOnWrite(t *testing.T) {
 	assert.Equal(t, 100.0, primaryData.BaseScore)
 
 	// Cache should be empty (invalidated)
-	cacheData, err := cacheStore.GetScore(ctx, data.Name)
+	cacheData, _ := cacheStore.GetScore(ctx, data.Name)
 	assert.Nil(t, cacheData)
 }
 

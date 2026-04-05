@@ -80,7 +80,7 @@ func Example_redisStoreWithTTL() {
 	engine.RegisterProvider("provider1", 1)
 
 	ctx := context.Background()
-	engine.SaveToStore(ctx)
+	_ = engine.SaveToStore(ctx)
 
 	fmt.Println("Scores saved with 1-hour TTL")
 
@@ -151,7 +151,7 @@ func Example_redisStorePubSub() {
 
 	// Start watching in background
 	go func() {
-		redisStore1.Watch(ctx, func(name string, data *store.ProviderScoreData) {
+		_ = redisStore1.Watch(ctx, func(name string, data *store.ProviderScoreData) {
 			fmt.Printf("Received update: %s (base=%.2f)\n", name, data.BaseScore)
 		})
 	}()
@@ -175,7 +175,7 @@ func Example_redisStorePubSub() {
 		Name:      "provider1",
 		BaseScore: 100.0,
 	}
-	redisStore2.SetScore(context.Background(), data)
+	_ = redisStore2.SetScore(context.Background(), data)
 
 	time.Sleep(500 * time.Millisecond)
 
@@ -219,8 +219,8 @@ func Example_redisStoreMultiTenancy() {
 		BaseScore: 100.0,
 	}
 
-	store1.SetScore(ctx, data)
-	store2.SetScore(ctx, data)
+	_ = store1.SetScore(ctx, data)
+	_ = store2.SetScore(ctx, data)
 
 	// Keys in Redis:
 	// tenant1:scoring:score:provider1

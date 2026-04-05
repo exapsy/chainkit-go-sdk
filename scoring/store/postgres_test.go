@@ -751,8 +751,8 @@ func setupPostgresStore(t testing.TB) (*PostgresStore, func()) {
 	cleanup := func() {
 		// Clean up all test data
 		ctx := context.Background()
-		store.pool.Exec(ctx, fmt.Sprintf("TRUNCATE TABLE %sprovider_scores", store.tablePrefix))
-		store.pool.Exec(ctx, fmt.Sprintf("DELETE FROM %slatency_stats WHERE id = 1", store.tablePrefix))
+		_, _ = store.pool.Exec(ctx, fmt.Sprintf("TRUNCATE TABLE %sprovider_scores", store.tablePrefix))
+		_, _ = store.pool.Exec(ctx, fmt.Sprintf("DELETE FROM %slatency_stats WHERE id = 1", store.tablePrefix))
 		store.Close()
 	}
 
@@ -789,7 +789,7 @@ func getPostgresConnString(t testing.TB) string {
 
 	// Store container for cleanup
 	t.Cleanup(func() {
-		container.Terminate(ctx)
+		_ = container.Terminate(ctx)
 	})
 
 	host, err := container.Host(ctx)

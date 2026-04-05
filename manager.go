@@ -493,21 +493,6 @@ func (pm *providerManager) updateFailureState(providerName string, now time.Time
 	}
 }
 
-// recordFailure records a failure and updates circuit breaker state
-func (pm *providerManager) recordFailure(providerName string) {
-	now := time.Now()
-	pm.updateFailureState(providerName, now)
-
-	// Record failure event in scoring engine
-	if pm.scoringEngine != nil {
-		pm.scoringEngine.RecordEvent(scoring.ScoreEvent{
-			Type:      scoring.EventOperationFailed,
-			Provider:  providerName,
-			Timestamp: now,
-		})
-	}
-}
-
 // updateChainConfig updates the configuration for this provider chain
 func (pm *providerManager) updateChainConfig(config ChainConfig) {
 	pm.mutex.Lock()

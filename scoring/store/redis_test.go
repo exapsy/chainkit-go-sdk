@@ -786,7 +786,7 @@ func getRedisAddr(t testing.TB) string {
 
 	// Store container for cleanup
 	t.Cleanup(func() {
-		container.Terminate(ctx)
+		_ = container.Terminate(ctx)
 	})
 
 	host, err := container.Host(ctx)

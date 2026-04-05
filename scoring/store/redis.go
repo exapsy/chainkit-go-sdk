@@ -351,12 +351,16 @@ func (r *RedisStore) Lock(ctx context.Context, providerName string, ttl time.Dur
 	lockValue := fmt.Sprintf("%d", time.Now().UnixNano())
 
 	// Try to acquire lock using SET NX (set if not exists)
-	ok, err := r.client.SetNX(ctx, lockKey, lockValue, ttl).Result()
-	if err != nil {
-		return nil, fmt.Errorf("redis setnx: %w", err)
-	}
-	if !ok {
+	// Use Set with Mode="NX" (SetNX is deprecated as of Redis 2.6.12)
+	result, err := r.client.SetArgs(ctx, lockKey, lockValue, redis.SetArgs{
+		Mode: "NX",
+		TTL:  ttl,
+	}).Result()
+	if err == redis.Nil || result == "" {
 		return nil, fmt.Errorf("lock already held for provider %s", providerName)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("redis set: %w", err)
 	}
 
 	// Return unlock function that only deletes if we still own the lock
