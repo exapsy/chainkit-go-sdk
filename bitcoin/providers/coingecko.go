@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/exapsy/chainkit"
@@ -21,15 +22,23 @@ const (
 type CoinGeckoService interface {
 	chainkit.BlockchainBaseProvider
 	chainkit.RateFetcher
+	chainkit.APIKeyValidator
 }
 
 type coingecko struct {
 	coinGeckoBaseURL string
+	apiKey           string
 	httpClient       *http.Client
+
+	// Auth state updated by ValidateAPIKey()
+	authMu    sync.RWMutex
+	authValid *bool
+	authErr   error
 }
 
 type CoingeckoOptions struct {
 	CoinGeckoBaseURL string
+	APIKey           string
 }
 
 func NewCoingecko(opts CoingeckoOptions) CoinGeckoService {
@@ -39,6 +48,7 @@ func NewCoingecko(opts CoingeckoOptions) CoinGeckoService {
 
 	return &coingecko{
 		coinGeckoBaseURL: opts.CoinGeckoBaseURL,
+		apiKey:           opts.APIKey,
 		httpClient:       &http.Client{Timeout: 30 * time.Second},
 	}
 }
@@ -60,7 +70,9 @@ func (s *coingecko) GetExchangeRates(
 	if err != nil {
 		return nil, err
 	}
-
+	if s.apiKey != "" {
+		req.Header.Set("x-cg-pro-api-key", s.apiKey)
+	}
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		return nil, err
@@ -69,7 +81,7 @@ func (s *coingecko) GetExchangeRates(
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("CoinGecko API returned status %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
 	// map[coin][currency]float64
@@ -128,6 +140,9 @@ func (s *coingecko) GetExchangeRate(
 	if err != nil {
 		return nil, err
 	}
+	if s.apiKey != "" {
+		req.Header.Set("x-cg-pro-api-key", s.apiKey)
+	}
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
@@ -137,7 +152,7 @@ func (s *coingecko) GetExchangeRate(
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("CoinGecko API returned status %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
 	// CoinGecko response: {"bitcoin": {"usd": 67432.89}}
@@ -178,12 +193,15 @@ func (s *coingecko) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return chainkit.HealthStatus{
-			Status: chainkit.HealthLevelDown,
+			Status:         chainkit.HealthLevelDown,
 			ResponseTimeMs: 0,
 			ResponseTimeUs: 0,
 			Error:          err.Error(),
 			LastChecked:    time.Now(),
 		}
+	}
+	if s.apiKey != "" {
+		req.Header.Set("x-cg-pro-api-key", s.apiKey)
 	}
 
 	resp, err := s.httpClient.Do(req)
@@ -193,7 +211,7 @@ func (s *coingecko) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 
 	if err != nil {
 		return chainkit.HealthStatus{
-			Status: chainkit.HealthLevelDown,
+			Status:         chainkit.HealthLevelDown,
 			ResponseTimeMs: responseTimeMs,
 			ResponseTimeUs: responseTimeUs,
 			Error:          err.Error(),
@@ -216,6 +234,24 @@ func (s *coingecko) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 		errorMsg = "slow response"
 	}
 
+	// Read cached auth state
+	s.authMu.RLock()
+	authValid := s.authValid
+	authErr := s.authErr
+	s.authMu.RUnlock()
+
+	var authErrStr string
+	if authErr != nil {
+		authErrStr = authErr.Error()
+	}
+
+	// Coingecko has a public fallback, so if auth is invalid we degrade but don't go down
+	isDegraded := authValid != nil && !*authValid
+
+	if isDegraded && status == chainkit.HealthLevelHealthy {
+		status = chainkit.HealthLevelDegraded
+	}
+
 	return chainkit.HealthStatus{
 		Status:         status,
 		ResponseTimeMs: responseTimeMs,
@@ -223,12 +259,80 @@ func (s *coingecko) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 		HTTPStatus:     resp.StatusCode,
 		Error:          errorMsg,
 		LastChecked:    time.Now(),
+		AuthValid:      authValid,
+		AuthError:      authErrStr,
+		IsDegraded:     isDegraded,
 	}
 }
 
 // GetCapabilities returns the list of capabilities this provider supports
 func (s *coingecko) GetCapabilities() []chainkit.ProviderCapability {
 	return []chainkit.ProviderCapability{
+		chainkit.CapabilityAPIKeyValidation,
 		chainkit.CapabilityRateFetching,
 	}
+}
+
+// ValidateAPIKey validates the configured API key with CoinGecko's API.
+// Returns nil if the key is valid or if no key is configured (public API).
+// Updates internal auth state that will be reflected in CheckHealth().
+func (s *coingecko) ValidateAPIKey(ctx context.Context) error {
+	// If no API key configured, we're using the public API - always valid
+	if s.apiKey == "" {
+		s.authMu.Lock()
+		s.authValid = nil // nil means no auth required
+		s.authErr = nil
+		s.authMu.Unlock()
+		return nil
+	}
+
+	url := s.coinGeckoBaseURL + "/ping"
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		s.authMu.Lock()
+		authFalse := false
+		s.authValid = &authFalse
+		s.authErr = fmt.Errorf("create request: %w", err)
+		s.authMu.Unlock()
+		return s.authErr
+	}
+	req.Header.Set("x-cg-pro-api-key", s.apiKey)
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		s.authMu.Lock()
+		authFalse := false
+		s.authValid = &authFalse
+		s.authErr = fmt.Errorf("validate API key: %w", err)
+		s.authMu.Unlock()
+		return s.authErr
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		s.authMu.Lock()
+		authFalse := false
+		s.authValid = &authFalse
+		s.authErr = fmt.Errorf("invalid API key (HTTP %d)", resp.StatusCode)
+		s.authMu.Unlock()
+		return s.authErr
+	}
+
+	if resp.StatusCode == http.StatusTooManyRequests {
+		s.authMu.Lock()
+		authFalse := false
+		s.authValid = &authFalse
+		s.authErr = fmt.Errorf("rate limit exceeded")
+		s.authMu.Unlock()
+		return s.authErr
+	}
+
+	// Success - mark auth as valid
+	s.authMu.Lock()
+	authTrue := true
+	s.authValid = &authTrue
+	s.authErr = nil
+	s.authMu.Unlock()
+
+	return nil
 }

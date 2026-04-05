@@ -50,28 +50,28 @@ func (p *blockchainCom) GetBalance(ctx context.Context, address string) (chainki
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return chainkit.Balance{}, fmt.Errorf("failed to create request: %w", err)
+		return chainkit.Balance{}, fmt.Errorf("create request: %w", err)
 	}
 
 	resp, err := p.httpClient.Do(req)
 	if err != nil {
-		return chainkit.Balance{}, fmt.Errorf("failed to fetch balance from BlockchainCom: %w", err)
+		return chainkit.Balance{}, fmt.Errorf("fetch balance for %s: %w", address, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return chainkit.Balance{}, fmt.Errorf("BlockchainCom API returned status %d: %s", resp.StatusCode, string(body))
+		return chainkit.Balance{}, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return chainkit.Balance{}, fmt.Errorf("failed to read response body: %w", err)
+		return chainkit.Balance{}, fmt.Errorf("read response body: %w", err)
 	}
 
 	sats, err := strconv.ParseUint(strings.TrimSpace(string(body)), 10, 64)
 	if err != nil {
-		return chainkit.Balance{}, fmt.Errorf("failed to parse balance: %w", err)
+		return chainkit.Balance{}, fmt.Errorf("parse balance: %w", err)
 	}
 
 	return chainkit.Balance{
@@ -95,24 +95,24 @@ func (p *blockchainCom) PushTx(ctx context.Context, rawTx []byte) (string, error
 		strings.NewReader(formBody),
 	)
 	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
+		return "", fmt.Errorf("create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	resp, err := p.httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("failed to broadcast transaction via BlockchainCom: %w", err)
+		return "", fmt.Errorf("broadcast transaction: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("failed to read response body: %w", err)
+		return "", fmt.Errorf("read response body: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("BlockchainCom API returned status %d: %s", resp.StatusCode, string(respBody))
+		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
 	}
 
 	// blockchain.info returns plain-text error messages starting with "Failed"

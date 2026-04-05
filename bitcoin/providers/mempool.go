@@ -114,7 +114,6 @@ func (s *mempoolProvider) GetExchangeRates(
 	ctx context.Context,
 	coin types.CoinTicker,
 ) ([]types.CoinRate, error) {
-
 	switch coin {
 	case types.CoinTickerBTC:
 		price, err := s.fetchPrice(ctx, "USD")
@@ -145,7 +144,6 @@ func (s *mempoolProvider) GetExchangeRate(
 	coin types.CoinTicker,
 	currency types.Currency,
 ) (*types.CoinRate, error) {
-
 	switch coin {
 	case types.CoinTickerBTC:
 		price, err := s.fetchPrice(ctx, currency.String())
@@ -188,7 +186,7 @@ func (m *mempoolProvider) GetBalance(ctx context.Context, address string) (chain
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
 		return chainkit.Balance{}, &types.RequestError{
-			Message: fmt.Sprintf("API returned status %d: %s", resp.StatusCode, string(body)),
+			Message: fmt.Sprintf("HTTP %d: %s", resp.StatusCode, string(body)),
 		}
 	}
 
@@ -225,7 +223,6 @@ func (m *mempoolProvider) GetBalance(ctx context.Context, address string) (chain
 
 // GetTxFees returns fee tiers for different confirmation targets
 func (m *mempoolProvider) GetTxFees(ctx context.Context) ([]types.FeeTier, error) {
-
 	url := fmt.Sprintf("%s/v1/fees/recommended", m.baseURL)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -240,7 +237,7 @@ func (m *mempoolProvider) GetTxFees(ctx context.Context) ([]types.FeeTier, error
 
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, &types.RequestError{Message: fmt.Sprintf("API returned status %d: %s", resp.StatusCode, string(body))}
+		return nil, &types.RequestError{Message: fmt.Sprintf("HTTP %d: %s", resp.StatusCode, string(body))}
 	}
 
 	var result struct {
@@ -277,7 +274,6 @@ func (m *mempoolProvider) GetTxFee(ctx context.Context, priority types.FeePriori
 
 // PushTx broadcasts a signed transaction to the network
 func (m *mempoolProvider) PushTx(ctx context.Context, rawTx []byte) (string, error) {
-
 	// Convert raw bytes to hex string
 	hexTx := hex.EncodeToString(rawTx)
 
@@ -300,7 +296,7 @@ func (m *mempoolProvider) PushTx(ctx context.Context, rawTx []byte) (string, err
 
 	if resp.StatusCode != 200 {
 		return "", &types.RequestError{
-			Message: fmt.Sprintf("broadcast failed (status %d): %s", resp.StatusCode, string(body)),
+			Message: fmt.Sprintf("HTTP %d: %s", resp.StatusCode, string(body)),
 		}
 	}
 
@@ -317,7 +313,7 @@ func (m *mempoolProvider) CheckHealth(ctx context.Context) chainkit.HealthStatus
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return chainkit.HealthStatus{
-			Status: chainkit.HealthLevelDown,
+			Status:         chainkit.HealthLevelDown,
 			ResponseTimeMs: 0,
 			ResponseTimeUs: 0,
 			Error:          err.Error(),
@@ -332,7 +328,7 @@ func (m *mempoolProvider) CheckHealth(ctx context.Context) chainkit.HealthStatus
 
 	if err != nil {
 		return chainkit.HealthStatus{
-			Status: chainkit.HealthLevelDown,
+			Status:         chainkit.HealthLevelDown,
 			ResponseTimeMs: responseTimeMs,
 			ResponseTimeUs: responseTimeUs,
 			Error:          err.Error(),
@@ -381,7 +377,6 @@ func (m *mempoolProvider) GetCapabilities() []chainkit.ProviderCapability {
 
 // GetUTXOs fetches unspent transaction outputs for a given address
 func (m *mempoolProvider) GetUTXOs(ctx context.Context, address string) ([]types.UTXO, error) {
-
 	url := fmt.Sprintf("%s/address/%s/utxo", m.baseURL, address)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -397,7 +392,7 @@ func (m *mempoolProvider) GetUTXOs(ctx context.Context, address string) ([]types
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
 		return nil, &types.RequestError{
-			Message: fmt.Sprintf("API returned status %d: %s", resp.StatusCode, string(body)),
+			Message: fmt.Sprintf("HTTP %d: %s", resp.StatusCode, string(body)),
 		}
 	}
 
@@ -476,7 +471,6 @@ func (m *mempoolProvider) addressToScriptPubKey(address string) ([]byte, error) 
 
 // GetTxStatus returns the confirmation status of a transaction
 func (m *mempoolProvider) GetTxStatus(ctx context.Context, txID string) (*chainkit.TxConfirmationStatus, error) {
-
 	// Mempool.space API endpoint for transaction status
 	url := fmt.Sprintf("%s/tx/%s", m.baseURL, txID)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)

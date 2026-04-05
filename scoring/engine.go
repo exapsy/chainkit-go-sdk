@@ -12,14 +12,16 @@ import (
 
 // Engine is the main scoring engine that orchestrates provider scoring
 type Engine struct {
-	config         ScoringConfig
-	scores         map[string]*ProviderScore
-	latencyTracker *LatencyTracker
-	decayManager   *DecayManager
-	store          store.ScoreStore  // Optional persistent storage
-	metrics        metrics.Recorder  // Always non-nil (NoOpRecorder by default)
-	mu             sync.RWMutex
-	started        bool
+	config              ScoringConfig
+	scores              map[string]*ProviderScore
+	latencyTracker      *LatencyTracker
+	decayManager        *DecayManager
+	store               store.ScoreStore          // Optional persistent storage
+	penaltyHistoryStore store.PenaltyHistoryStore // Optional; nil = in-memory only
+	metrics             metrics.Recorder          // Always non-nil (NoOpRecorder by default)
+	cleanupCancel       context.CancelFunc        // cancels the penalty cleanup goroutine
+	mu                  sync.RWMutex
+	started             bool
 }
 
 // NewEngine creates a new scoring engine with the given options
@@ -58,13 +60,14 @@ func NewEngine(opts ...ScoringOption) *Engine {
 	decayManager := NewDecayManager(config, scores)
 
 	e := &Engine{
-		config:         config,
-		scores:         scores,
-		latencyTracker: latencyTracker,
-		decayManager:   decayManager,
-		store:          s,
-		metrics:        rec,
-		started:        false,
+		config:              config,
+		scores:              scores,
+		latencyTracker:      latencyTracker,
+		decayManager:        decayManager,
+		store:               s,
+		penaltyHistoryStore: config.PenaltyHistoryStore,
+		metrics:             rec,
+		started:             false,
 	}
 
 	// Load scores from store if available
@@ -75,7 +78,7 @@ func NewEngine(opts ...ScoringOption) *Engine {
 	return e
 }
 
-// Start begins background processes (decay manager)
+// Start begins background processes (decay manager + penalty history cleanup)
 func (e *Engine) Start(ctx context.Context) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -86,6 +89,27 @@ func (e *Engine) Start(ctx context.Context) {
 
 	e.started = true
 	e.decayManager.Start(ctx)
+
+	// Warm in-memory ring buffers from the persistent store.
+	e.warmPenaltyHistory(ctx)
+
+	// Start background cleanup for the persistent penalty store.
+	if e.penaltyHistoryStore != nil && e.config.PenaltyCleanupInterval > 0 {
+		cleanupCtx, cancel := context.WithCancel(ctx)
+		e.cleanupCancel = cancel
+		go func() {
+			ticker := time.NewTicker(e.config.PenaltyCleanupInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-cleanupCtx.Done():
+					return
+				case <-ticker.C:
+					_ = e.penaltyHistoryStore.PurgeOld(context.Background(), e.config.RetentionWindow)
+				}
+			}
+		}()
+	}
 }
 
 // Stop halts background processes
@@ -99,6 +123,11 @@ func (e *Engine) Stop() {
 
 	e.started = false
 	e.decayManager.Stop()
+
+	if e.cleanupCancel != nil {
+		e.cleanupCancel()
+		e.cleanupCancel = nil
+	}
 }
 
 // RegisterProvider registers a new provider with the scoring engine
@@ -111,7 +140,7 @@ func (e *Engine) RegisterProvider(name string, priority int) {
 		return // Already registered
 	}
 
-	score := NewProviderScore(name, priority, e.config.LatencyWindowSize)
+	score := NewProviderScore(name, priority, e.config.LatencyWindowSize, e.config.PenaltyHistorySize)
 	e.scores[name] = score
 
 	// Update decay manager's score map
@@ -156,31 +185,50 @@ func (e *Engine) RecordEvent(event ScoreEvent) {
 
 	// Apply penalties based on event type
 	success := event.Error == nil
+	ts := event.Timestamp
+	if ts.IsZero() {
+		ts = time.Now()
+	}
+
 	switch event.Type {
 	case EventHealthCheckFailed:
-		score.AddHealthPenalty(e.config.HealthCheckFailPenalty, e.config.MaxPenalty)
+		const reason = "health check failed"
+		score.AddHealthPenalty(e.config.HealthCheckFailPenalty, e.config.MaxPenalty, reason)
+		e.persistPenalty(event.Provider, PenaltyCategoryHealth, reason, e.config.HealthCheckFailPenalty, ts)
 
 	case EventHealthCheck429:
-		score.AddRateLimitPenalty(e.config.RateLimitPenalty, e.config.MaxPenalty)
+		const reason = "rate limit during health check (HTTP 429)"
+		score.AddRateLimitPenalty(e.config.RateLimitPenalty, e.config.MaxPenalty, reason)
+		e.persistPenalty(event.Provider, PenaltyCategoryRateLimit, reason, e.config.RateLimitPenalty, ts)
 
 	case EventHealthCheckAuthFail:
-		score.AddHealthPenalty(e.config.AuthFailurePenalty, e.config.MaxPenalty)
+		const reason = "authentication failure (HTTP 401/403)"
+		score.AddHealthPenalty(e.config.AuthFailurePenalty, e.config.MaxPenalty, reason)
+		e.persistPenalty(event.Provider, PenaltyCategoryHealth, reason, e.config.AuthFailurePenalty, ts)
 
 	case EventHealthCheckTimeout:
-		score.AddHealthPenalty(e.config.TimeoutPenalty, e.config.MaxPenalty)
+		const reason = "health check timed out"
+		score.AddHealthPenalty(e.config.TimeoutPenalty, e.config.MaxPenalty, reason)
+		e.persistPenalty(event.Provider, PenaltyCategoryHealth, reason, e.config.TimeoutPenalty, ts)
 
 	case EventOperationFailed:
-		score.AddErrorPenalty(e.config.OperationFailPenalty, e.config.MaxPenalty)
+		reason := "operation failed"
+		if event.Error != nil {
+			reason = event.Error.Error()
+		}
+		score.AddErrorPenalty(e.config.OperationFailPenalty, e.config.MaxPenalty, reason)
+		e.persistPenalty(event.Provider, PenaltyCategoryError, reason, e.config.OperationFailPenalty, ts)
 
 	case EventRateLimited:
-		score.AddRateLimitPenalty(e.config.RateLimitPenalty, e.config.MaxPenalty)
+		const reason = "rate limited (HTTP 429)"
+		score.AddRateLimitPenalty(e.config.RateLimitPenalty, e.config.MaxPenalty, reason)
+		e.persistPenalty(event.Provider, PenaltyCategoryRateLimit, reason, e.config.RateLimitPenalty, ts)
 
 	case EventOperationSuccess:
 		score.RecordSuccess(e.config.SuccessBonus)
 
 	case EventSlowResponse:
-		// Latency penalty is handled by updateLatencyPenalty
-		// This event type can be used for explicit slow response marking
+		// Latency penalty is handled by updateLatencyPenalty above.
 	}
 
 	e.metrics.RecordEvent(ctx, event.Provider, string(event.Type), success)
@@ -197,24 +245,97 @@ func (e *Engine) updateLatencyPenalty(providerName string) {
 		return
 	}
 
+	// Get per-provider stats before acquiring the score lock
+	providerStats := e.latencyTracker.GetProviderStats(providerName)
+
 	// Get this provider's slowness factor (in standard deviations)
 	slownessFactor := e.latencyTracker.GetProviderSlownessFactor(providerName)
 
 	// Only apply penalty if significantly slower than threshold
-	// Use < instead of <= so providers exactly at threshold get penalized
+	var reason string
 	if slownessFactor < e.config.SlowThresholdStdDev {
 		slownessFactor = 0 // Not slow enough to penalize
 	} else {
 		// Subtract threshold so penalty starts from 0 at threshold
 		slownessFactor = slownessFactor - e.config.SlowThresholdStdDev
+
+		// Build a diagnostic reason with P95 context
+		ratio := 0.0
+		if globalStats.P95 > 0 && providerStats != nil {
+			ratio = float64(providerStats.P95) / float64(globalStats.P95)
+		}
+		globalP95ms := int64(0)
+		providerP95ms := int64(0)
+		if globalStats.P95 > 0 {
+			globalP95ms = globalStats.P95.Milliseconds()
+		}
+		if providerStats != nil && providerStats.P95 > 0 {
+			providerP95ms = providerStats.P95.Milliseconds()
+		}
+		reason = fmt.Sprintf("%.1fx slower than peers (provider P95: %dms, global P95: %dms)",
+			ratio, providerP95ms, globalP95ms)
 	}
 
 	e.mu.RLock()
 	score, exists := e.scores[providerName]
 	e.mu.RUnlock()
 
-	if exists && score != nil {
-		score.UpdateLatencyPenalty(slownessFactor, e.config.SlowResponsePenalty)
+	if !exists || score == nil {
+		return
+	}
+
+	score.UpdateLatencyPenalty(slownessFactor, e.config.SlowResponsePenalty, reason)
+
+	// Persist the latency penalty event if one was applied
+	if slownessFactor > 0 && reason != "" {
+		penalty := slownessFactor * e.config.SlowResponsePenalty
+		e.persistPenalty(providerName, PenaltyCategoryLatency, reason, penalty, time.Now())
+	}
+}
+
+// persistPenalty appends a penalty record to the persistent store in a background goroutine.
+// It is a no-op when no PenaltyHistoryStore is configured.
+func (e *Engine) persistPenalty(provider string, cat PenaltyCategory, reason string, amount float64, ts time.Time) {
+	if e.penaltyHistoryStore == nil {
+		return
+	}
+	record := &store.PenaltyRecordData{
+		ProviderName: provider,
+		Category:     string(cat),
+		Reason:       reason,
+		Amount:       amount,
+		CreatedAt:    ts,
+	}
+	go func() {
+		_ = e.penaltyHistoryStore.Append(context.Background(), record)
+	}()
+}
+
+// warmPenaltyHistory populates the in-memory ring buffers from the persistent store.
+// Must be called with e.mu held (write lock) or before e is exposed to other goroutines.
+func (e *Engine) warmPenaltyHistory(ctx context.Context) {
+	if e.penaltyHistoryStore == nil {
+		return
+	}
+
+	for name, score := range e.scores {
+		if score == nil {
+			continue
+		}
+		records, err := e.penaltyHistoryStore.GetRecent(ctx, name, e.config.PenaltyHistorySize)
+		if err != nil || len(records) == 0 {
+			continue
+		}
+		score.mu.Lock()
+		for _, r := range records {
+			score.history.add(PenaltyRecord{
+				Timestamp: r.CreatedAt,
+				Category:  PenaltyCategory(r.Category),
+				Reason:    r.Reason,
+				Amount:    r.Amount,
+			})
+		}
+		score.mu.Unlock()
 	}
 }
 
@@ -330,6 +451,7 @@ func (e *Engine) Reset() {
 			score.FailedOps = 0
 			score.RecentLatencies = make([]time.Duration, 0, score.LatencyWindowSize)
 			score.LastUpdated = time.Now()
+			score.history = newPenaltyHistory(cap(score.history.buf))
 			score.mu.Unlock()
 		}
 	}
@@ -449,7 +571,7 @@ func (e *Engine) loadFromStoreUnsafe(ctx context.Context) error {
 	// Convert store data to provider scores
 	for _, d := range data {
 		if d != nil && d.Name != "" {
-			ps := FromStoreData(d, e.config.LatencyWindowSize)
+			ps := FromStoreData(d, e.config.LatencyWindowSize, e.config.PenaltyHistorySize)
 			e.scores[d.Name] = ps
 		}
 	}

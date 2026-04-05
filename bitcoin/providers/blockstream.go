@@ -97,12 +97,11 @@ func (p *blockstream) Name() string {
 }
 
 func (p *blockstream) GetUTXOs(ctx context.Context, address string) ([]types.UTXO, error) {
-
 	// GET /address/:address/utxo
 	// Returns: txid, vout, value, status.confirmed
 	body, err := p.callAPI(ctx, "GET", fmt.Sprintf("/address/%s/utxo", address), nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch UTXOs from Blockstream: %w", err)
+		return nil, fmt.Errorf("fetch UTXOs for %s: %w", address, err)
 	}
 
 	var utxoResponses []struct {
@@ -115,7 +114,7 @@ func (p *blockstream) GetUTXOs(ctx context.Context, address string) ([]types.UTX
 	}
 
 	if err = json.Unmarshal(body, &utxoResponses); err != nil {
-		return nil, fmt.Errorf("failed to parse UTXO response: %w", err)
+		return nil, fmt.Errorf("parse UTXO response: %w", err)
 	}
 
 	utxos := make([]types.UTXO, 0, len(utxoResponses))
@@ -156,7 +155,6 @@ func (p *blockstream) GetBalance(ctx context.Context, address string) (chainkit.
 }
 
 func (p *blockstream) ValidateAddress(ctx context.Context, address string) (bool, error) {
-
 	// callAPI returns an error for non-200 status codes (including 400 invalid address).
 	// A 400 response means the address format is invalid; any other error is unexpected.
 	_, err := p.callAPI(ctx, "GET", fmt.Sprintf("/address/%s", address), nil)
@@ -256,12 +254,12 @@ func (p *blockstream) callAPI(
 	for {
 		token, err := p.GetAccessToken(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get access token: %w", err)
+			return nil, fmt.Errorf("get access token: %w", err)
 		}
 
 		req, err := http.NewRequestWithContext(ctx, method, fullURL, nil)
 		if err != nil {
-			return nil, fmt.Errorf("error creating request: %w", err)
+			return nil, fmt.Errorf("create request: %w", err)
 		}
 
 		req.Header.Add("Authorization", "Bearer "+token)
@@ -276,7 +274,7 @@ func (p *blockstream) callAPI(
 
 		resp, err := blockstreamHTTPClient.Do(req)
 		if err != nil {
-			return nil, fmt.Errorf("error executing request: %w", err)
+			return nil, fmt.Errorf("request failed: %w", err)
 		}
 
 		switch resp.StatusCode {
@@ -284,13 +282,13 @@ func (p *blockstream) callAPI(
 			body, err := io.ReadAll(resp.Body)
 			resp.Body.Close()
 			if err != nil {
-				return nil, fmt.Errorf("error reading response body: %w", err)
+				return nil, fmt.Errorf("read response body: %w", err)
 			}
 			return body, nil
 		case http.StatusUnauthorized:
 			resp.Body.Close()
 			if retried {
-				return nil, errors.New("unauthorized: token refresh did not resolve the issue")
+				return nil, errors.New("HTTP 401: unauthorized after token refresh")
 			}
 			retried = true
 			// Invalidate cached token so GetAccessToken fetches a fresh one
@@ -299,14 +297,14 @@ func (p *blockstream) callAPI(
 			p.tokenMu.Unlock()
 		case http.StatusNotFound:
 			resp.Body.Close()
-			return nil, errors.New("transaction not found")
+			return nil, fmt.Errorf("HTTP 404: not found")
 		case http.StatusTooManyRequests:
 			resp.Body.Close()
-			return nil, errors.New("rate limit exceeded")
+			return nil, fmt.Errorf("HTTP 429: rate limit exceeded")
 		default:
 			body, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
-			return nil, fmt.Errorf("API request failed with status code: %d: %s", resp.StatusCode, string(body))
+			return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 		}
 	}
 }
@@ -326,12 +324,12 @@ func (p *blockstream) callAPIWithStringBody(
 	for {
 		token, err := p.GetAccessToken(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get access token: %w", err)
+			return nil, fmt.Errorf("get access token: %w", err)
 		}
 
 		req, err := http.NewRequestWithContext(ctx, method, fullURL, strings.NewReader(body))
 		if err != nil {
-			return nil, fmt.Errorf("error creating request: %w", err)
+			return nil, fmt.Errorf("create request: %w", err)
 		}
 
 		req.Header.Add("Authorization", "Bearer "+token)
@@ -339,7 +337,7 @@ func (p *blockstream) callAPIWithStringBody(
 
 		resp, err := blockstreamHTTPClient.Do(req)
 		if err != nil {
-			return nil, fmt.Errorf("error executing request: %w", err)
+			return nil, fmt.Errorf("request failed: %w", err)
 		}
 
 		switch resp.StatusCode {
@@ -347,13 +345,13 @@ func (p *blockstream) callAPIWithStringBody(
 			respBody, err := io.ReadAll(resp.Body)
 			resp.Body.Close()
 			if err != nil {
-				return nil, fmt.Errorf("error reading response body: %w", err)
+				return nil, fmt.Errorf("read response body: %w", err)
 			}
 			return respBody, nil
 		case http.StatusUnauthorized:
 			resp.Body.Close()
 			if retried {
-				return nil, errors.New("unauthorized: token refresh did not resolve the issue")
+				return nil, errors.New("HTTP 401: unauthorized after token refresh")
 			}
 			retried = true
 			p.tokenMu.Lock()
@@ -366,9 +364,9 @@ func (p *blockstream) callAPIWithStringBody(
 			resp.Body.Close()
 			return nil, errors.New("rate limit exceeded")
 		default:
-			respBody, _ := io.ReadAll(resp.Body)
+			body, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
-			return nil, fmt.Errorf("API request failed with status code: %d: %s", resp.StatusCode, string(respBody))
+			return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 		}
 	}
 }
@@ -391,7 +389,7 @@ func (p *blockstream) PushTx(ctx context.Context, rawTx []byte) (string, error) 
 func (p *blockstream) GetTxStatus(ctx context.Context, txID string) (*chainkit.TxConfirmationStatus, error) {
 	body, err := p.callAPI(ctx, "GET", fmt.Sprintf("/tx/%s/status", txID), nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch tx status from Blockstream: %w", err)
+		return nil, fmt.Errorf("fetch tx status %s: %w", txID, err)
 	}
 
 	var statusResp struct {
@@ -402,7 +400,7 @@ func (p *blockstream) GetTxStatus(ctx context.Context, txID string) (*chainkit.T
 	}
 
 	if err = json.Unmarshal(body, &statusResp); err != nil {
-		return nil, fmt.Errorf("failed to parse tx status response: %w", err)
+		return nil, fmt.Errorf("parse tx status response: %w", err)
 	}
 
 	confirmations := 0
@@ -435,7 +433,7 @@ func (p *blockstream) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return chainkit.HealthStatus{
-			Status: chainkit.HealthLevelDown,
+			Status:         chainkit.HealthLevelDown,
 			ResponseTimeMs: 0,
 			ResponseTimeUs: 0,
 			Error:          err.Error(),
@@ -455,7 +453,7 @@ func (p *blockstream) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 
 	if err != nil {
 		return chainkit.HealthStatus{
-			Status: chainkit.HealthLevelDown,
+			Status:         chainkit.HealthLevelDown,
 			ResponseTimeMs: responseTimeMs,
 			ResponseTimeUs: responseTimeUs,
 			Error:          err.Error(),
@@ -499,7 +497,6 @@ type BlockstreamFeeEstimates map[string]float64
 //
 // For example: { "1": 87.882, "2": 87.882, "3": 87.882, "4": 87.882, "5": 81.129, "6": 68.285, ..., "144": 1.027, "504": 1.027, "1008": 1.027 }
 func (p *blockstream) getFeeEstimates(ctx context.Context) (BlockstreamFeeEstimates, error) {
-
 	endpoint := "/fee-estimates"
 
 	body, err := p.callAPI(ctx, "GET", endpoint, nil)
@@ -519,7 +516,6 @@ func (p *blockstream) getFeeEstimates(ctx context.Context) (BlockstreamFeeEstima
 // GetTxFees implements FeeRecommender interface
 // Returns fee estimates for different confirmation targets (fast, medium, slow)
 func (p *blockstream) GetTxFees(ctx context.Context) ([]types.FeeTier, error) {
-
 	estimates, err := p.getFeeEstimates(ctx)
 	if err != nil {
 		return nil, err

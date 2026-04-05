@@ -3,9 +3,11 @@ package providers
 import (
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/blockcypher/gobcy/v2"
@@ -20,10 +22,16 @@ type BlockcypherProvider interface {
 	chainkit.AddressValidator
 	chainkit.TxBroadcaster
 	chainkit.TxStatusFetcher
+	chainkit.APIKeyValidator
 }
 
 type blockcypher struct {
 	Client gobcy.API
+
+	// Auth state protected by mutex, updated by ValidateAPIKey()
+	authMu    sync.RWMutex
+	authValid *bool
+	authErr   error
 }
 
 type BlockcypherProviderOptions struct {
@@ -61,7 +69,7 @@ func (p *blockcypher) GetUTXOs(ctx context.Context, address string) ([]types.UTX
 
 	addr, err := p.Client.GetAddr(address, flags)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch address details: %w", err)
+		return nil, fmt.Errorf("fetch address %s: %w", address, err)
 	}
 
 	utxos := make([]types.UTXO, 0, len(addr.TXRefs))
@@ -93,7 +101,7 @@ func (p *blockcypher) ValidateAddress(ctx context.Context, address string) (bool
 			strings.Contains(strings.ToLower(errStr), "not found") {
 			return false, nil // Address is invalid but no error occurred in the validation process
 		}
-		return false, fmt.Errorf("failed to validate address with BlockCypher: %w", err)
+		return false, fmt.Errorf("validate address %s: %w", address, err)
 	}
 
 	return true, nil
@@ -103,7 +111,7 @@ func (p *blockcypher) ValidateAddress(ctx context.Context, address string) (bool
 func (p *blockcypher) GetBalance(ctx context.Context, address string) (chainkit.Balance, error) {
 	addr, err := p.Client.GetAddr(address, nil)
 	if err != nil {
-		return chainkit.Balance{}, fmt.Errorf("failed to fetch address details: %w", err)
+		return chainkit.Balance{}, fmt.Errorf("fetch balance for %s: %w", address, err)
 	}
 
 	confirmed := addr.Balance.Int64()
@@ -130,7 +138,7 @@ func (p *blockcypher) PushTx(ctx context.Context, rawTx []byte) (string, error) 
 
 	skel, err := p.Client.PushTX(hexTx)
 	if err != nil {
-		return "", fmt.Errorf("failed to broadcast transaction via BlockCypher: %w", err)
+		return "", fmt.Errorf("broadcast transaction: %w", err)
 	}
 
 	return skel.Trans.Hash, nil
@@ -140,7 +148,7 @@ func (p *blockcypher) PushTx(ctx context.Context, rawTx []byte) (string, error) 
 func (p *blockcypher) GetTxStatus(ctx context.Context, txID string) (*chainkit.TxConfirmationStatus, error) {
 	tx, err := p.Client.GetTX(txID, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch tx status from BlockCypher: %w", err)
+		return nil, fmt.Errorf("fetch tx status %s: %w", txID, err)
 	}
 
 	confirmed := !tx.Confirmed.IsZero()
@@ -162,6 +170,12 @@ func (p *blockcypher) GetTxStatus(ctx context.Context, txID string) (*chainkit.T
 func (p *blockcypher) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 	start := time.Now()
 
+	// Read current auth state
+	p.authMu.RLock()
+	authValid := p.authValid
+	authErr := p.authErr
+	p.authMu.RUnlock()
+
 	if p.Client.Chain == "" || p.Client.Coin == "" {
 		return chainkit.HealthStatus{
 			Status:         chainkit.HealthLevelDown,
@@ -169,6 +183,9 @@ func (p *blockcypher) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 			ResponseTimeUs: 0,
 			Error:          "Blockcypher.com only supports Bitcoin mainnet and testnet3",
 			LastChecked:    time.Now(),
+			AuthValid:      authValid,
+			AuthError:      authErrString(authErr),
+			IsDegraded:     authValid != nil && !*authValid,
 		}
 	}
 
@@ -187,6 +204,9 @@ func (p *blockcypher) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 			ResponseTimeUs: 0,
 			Error:          err.Error(),
 			LastChecked:    time.Now(),
+			AuthValid:      authValid,
+			AuthError:      authErrString(authErr),
+			IsDegraded:     authValid != nil && !*authValid,
 		}
 	}
 
@@ -202,6 +222,9 @@ func (p *blockcypher) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 			ResponseTimeUs: responseTimeUs,
 			Error:          err.Error(),
 			LastChecked:    time.Now(),
+			AuthValid:      authValid,
+			AuthError:      authErrString(authErr),
+			IsDegraded:     authValid != nil && !*authValid,
 		}
 	}
 	defer resp.Body.Close()
@@ -220,6 +243,12 @@ func (p *blockcypher) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 		errorMsg = "slow response"
 	}
 
+	// If auth is invalid, mark as degraded (Blockcypher has public fallback)
+	isDegraded := authValid != nil && !*authValid
+	if isDegraded && status == chainkit.HealthLevelHealthy {
+		status = chainkit.HealthLevelDegraded
+	}
+
 	return chainkit.HealthStatus{
 		Status:         status,
 		ResponseTimeMs: responseTimeMs,
@@ -227,16 +256,96 @@ func (p *blockcypher) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 		HTTPStatus:     resp.StatusCode,
 		Error:          errorMsg,
 		LastChecked:    time.Now(),
+		AuthValid:      authValid,
+		AuthError:      authErrString(authErr),
+		IsDegraded:     isDegraded,
 	}
+}
+
+// authErrString returns the error string or empty if nil.
+func authErrString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }
 
 // GetCapabilities returns the list of capabilities this provider supports
 func (p *blockcypher) GetCapabilities() []chainkit.ProviderCapability {
 	return []chainkit.ProviderCapability{
 		chainkit.CapabilityAddressValidation,
+		chainkit.CapabilityAPIKeyValidation,
 		chainkit.CapabilityBalanceFetching,
 		chainkit.CapabilityTxBroadcast,
 		chainkit.CapabilityTxStatusFetching,
 		chainkit.CapabilityUTXOFetching,
 	}
+}
+
+// ValidateAPIKey validates the configured API token with BlockCypher's token endpoint.
+// Returns nil if the token is valid, or an error containing the HTTP status if invalid.
+// Updates internal auth state for use by CheckHealth().
+func (p *blockcypher) ValidateAPIKey(ctx context.Context) error {
+	// Helper to update auth state
+	setAuthState := func(valid bool, err error) {
+		p.authMu.Lock()
+		p.authValid = &valid
+		p.authErr = err
+		p.authMu.Unlock()
+	}
+
+	if p.Client.Token == "" {
+		err := fmt.Errorf("no API token configured")
+		setAuthState(false, err)
+		return err
+	}
+
+	url := fmt.Sprintf("https://api.blockcypher.com/v1/tokens/%s", p.Client.Token)
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		err = fmt.Errorf("create request: %w", err)
+		setAuthState(false, err)
+		return err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		err = fmt.Errorf("validate API key: %w", err)
+		setAuthState(false, err)
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		var errResp struct {
+			Error string `json:"error"`
+		}
+		if decodeErr := json.NewDecoder(resp.Body).Decode(&errResp); decodeErr == nil && errResp.Error != "" {
+			err = fmt.Errorf("invalid API key (HTTP %d): %s", resp.StatusCode, errResp.Error)
+		} else {
+			err = fmt.Errorf("invalid API key (HTTP %d)", resp.StatusCode)
+		}
+		setAuthState(false, err)
+		return err
+	}
+
+	var tokenResp struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+		err = fmt.Errorf("decode response: %w", err)
+		setAuthState(false, err)
+		return err
+	}
+
+	if tokenResp.Token == "" {
+		err := fmt.Errorf("invalid API key: no token in response")
+		setAuthState(false, err)
+		return err
+	}
+
+	setAuthState(true, nil)
+	return nil
 }

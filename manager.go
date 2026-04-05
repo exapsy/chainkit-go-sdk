@@ -316,13 +316,15 @@ func (pm *providerManager) attemptWithRetry(
 			}
 		}
 
+		start := time.Now()
 		result, err := op(ctx, providerCfg.Provider)
+		elapsed := time.Since(start)
 		if err == nil {
-			pm.recordSuccess(providerCfg.Name)
+			pm.recordSuccessWithLatency(providerCfg.Name, elapsed)
 			return result, nil
 		}
 
-		pm.recordFailure(providerCfg.Name)
+		pm.recordFailureWithError(providerCfg.Name, err, elapsed)
 		lastErr = err
 	}
 
@@ -445,12 +447,12 @@ func (pm *providerManager) recordSuccess(providerName string) {
 	}
 }
 
-// recordFailure records a failure and updates circuit breaker state
-func (pm *providerManager) recordFailure(providerName string) {
+// updateFailureState updates failure tracker and circuit breaker for a failed operation.
+// It does NOT emit a scoring event — callers are responsible for that.
+// Must NOT be called with pm.mutex held.
+func (pm *providerManager) updateFailureState(providerName string, now time.Time) {
 	pm.mutex.Lock()
 	defer pm.mutex.Unlock()
-
-	now := time.Now()
 
 	// Update failure tracking
 	if failure, exists := pm.failureTracker[providerName]; exists {
@@ -489,6 +491,12 @@ func (pm *providerManager) recordFailure(providerName string) {
 			}
 		}
 	}
+}
+
+// recordFailure records a failure and updates circuit breaker state
+func (pm *providerManager) recordFailure(providerName string) {
+	now := time.Now()
+	pm.updateFailureState(providerName, now)
 
 	// Record failure event in scoring engine
 	if pm.scoringEngine != nil {
@@ -632,14 +640,16 @@ func (pm *providerManager) GetScoringEngine() *scoring.Engine {
 	return pm.scoringEngine
 }
 
-// recordFailureWithError records a failure with error classification for scoring
+// recordFailureWithError records a failure with error classification for scoring.
+// Unlike recordFailure, it emits only the classified event (not a generic EventOperationFailed
+// first), so a single operation failure produces exactly one scoring event.
 func (pm *providerManager) recordFailureWithError(providerName string, err error, responseTime time.Duration) {
-	// First, record the basic failure
-	pm.recordFailure(providerName)
+	now := time.Now()
+	pm.updateFailureState(providerName, now)
 
-	// Then, if we have a scoring engine, classify the error
 	if pm.scoringEngine != nil {
 		event := scoring.ClassifyOperationEvent(providerName, responseTime, err)
+		event.Timestamp = now
 		pm.scoringEngine.RecordEvent(event)
 	}
 }

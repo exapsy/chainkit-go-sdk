@@ -7,6 +7,12 @@ import (
 	"github.com/exapsy/chainkit/scoring/store"
 )
 
+// RedisPenaltyOption is a functional option for configuring the Redis penalty store.
+type RedisPenaltyOption func(*store.RedisPenaltyConfig)
+
+// PostgresPenaltyOption is a functional option for configuring the Postgres penalty store.
+type PostgresPenaltyOption func(*store.PostgresPenaltyConfig)
+
 // ScoringConfig holds all configuration for the scoring engine
 type ScoringConfig struct {
 	// Penalty weights (how much each event type affects the score)
@@ -67,6 +73,22 @@ type ScoringConfig struct {
 	// Defaults to a no-op recorder if not set.
 	// Setting this via WithMetrics automatically instruments the store too.
 	MetricsRecorder metrics.Recorder
+
+	// PenaltyHistorySize is the capacity of the in-memory ring buffer per provider.
+	// Default: 50.
+	PenaltyHistorySize int
+
+	// PenaltyHistoryStore is the optional persistent backend for penalty events.
+	// When nil, penalty events are only kept in the in-memory ring buffer.
+	PenaltyHistoryStore store.PenaltyHistoryStore
+
+	// RetentionWindow is how far back Postgres penalty records are kept.
+	// PurgeOld deletes records older than this. Default: 30 days.
+	RetentionWindow time.Duration
+
+	// PenaltyCleanupInterval controls how often PurgeOld is called.
+	// Default: 24 hours.
+	PenaltyCleanupInterval time.Duration
 }
 
 // DefaultScoringConfig returns a sensible default configuration
@@ -93,6 +115,11 @@ func DefaultScoringConfig() ScoringConfig {
 
 		// Enabled by default when engine is created
 		Enabled: true,
+
+		// Penalty history
+		PenaltyHistorySize:     50,
+		RetentionWindow:        30 * 24 * time.Hour,
+		PenaltyCleanupInterval: 24 * time.Hour,
 	}
 }
 
@@ -513,6 +540,92 @@ func HybridCacheConfig(fn func(*store.StoreConfig)) HybridStoreOption {
 func WithMetrics(recorder metrics.Recorder) ScoringOption {
 	return func(c *ScoringConfig) {
 		c.MetricsRecorder = recorder
+	}
+}
+
+// WithPenaltyHistorySize sets the capacity of the in-memory ring buffer per provider.
+func WithPenaltyHistorySize(n int) ScoringOption {
+	return func(c *ScoringConfig) {
+		if n > 0 {
+			c.PenaltyHistorySize = n
+		}
+	}
+}
+
+// WithPenaltyHistoryStore sets the persistent backend for penalty events.
+func WithPenaltyHistoryStore(s store.PenaltyHistoryStore) ScoringOption {
+	return func(c *ScoringConfig) {
+		c.PenaltyHistoryStore = s
+	}
+}
+
+// WithRetentionWindow sets the maximum age of penalty records in Postgres.
+func WithRetentionWindow(d time.Duration) ScoringOption {
+	return func(c *ScoringConfig) {
+		if d > 0 {
+			c.RetentionWindow = d
+		}
+	}
+}
+
+// WithPenaltyCleanupInterval sets how often PurgeOld is called.
+func WithPenaltyCleanupInterval(d time.Duration) ScoringOption {
+	return func(c *ScoringConfig) {
+		if d > 0 {
+			c.PenaltyCleanupInterval = d
+		}
+	}
+}
+
+// WithRedisPenaltyStore configures a Redis-backed penalty history store.
+// Falls back to in-memory only if the connection fails.
+func WithRedisPenaltyStore(addr string, opts ...RedisPenaltyOption) ScoringOption {
+	return func(c *ScoringConfig) {
+		cfg := store.RedisPenaltyConfig{Addr: addr}
+		for _, o := range opts {
+			o(&cfg)
+		}
+		s, err := store.NewRedisPenaltyStore(cfg)
+		if err == nil {
+			c.PenaltyHistoryStore = s
+		}
+	}
+}
+
+// WithPostgresPenaltyStore configures a Postgres-backed penalty history store.
+// Falls back to in-memory only if the connection fails.
+func WithPostgresPenaltyStore(connStr string, opts ...PostgresPenaltyOption) ScoringOption {
+	return func(c *ScoringConfig) {
+		cfg := store.PostgresPenaltyConfig{ConnectionString: connStr}
+		for _, o := range opts {
+			o(&cfg)
+		}
+		s, err := store.NewPostgresPenaltyStore(cfg)
+		if err == nil {
+			c.PenaltyHistoryStore = s
+		}
+	}
+}
+
+// WithCompositePenaltyStore configures a composite penalty store backed by both
+// Postgres (durable) and Redis (fast recent-events cache).
+// Falls back to in-memory only if either connection fails.
+func WithCompositePenaltyStore(pgConnStr, redisAddr string) ScoringOption {
+	return func(c *ScoringConfig) {
+		pg, err := store.NewPostgresPenaltyStore(store.PostgresPenaltyConfig{
+			ConnectionString: pgConnStr,
+		})
+		if err != nil {
+			return
+		}
+		red, err := store.NewRedisPenaltyStore(store.RedisPenaltyConfig{
+			Addr: redisAddr,
+		})
+		if err != nil {
+			_ = pg.Close()
+			return
+		}
+		c.PenaltyHistoryStore = store.NewCompositePenaltyStore(pg, red)
 	}
 }
 

@@ -71,7 +71,7 @@ func (b *binance) fetchPrice(ctx context.Context, symbol string) (float64, error
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return 0, fmt.Errorf("Binance API returned status %d: %s", resp.StatusCode, string(body))
+		return 0, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
 	var ticker struct {

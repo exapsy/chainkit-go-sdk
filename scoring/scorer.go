@@ -31,12 +31,16 @@ type ProviderScore struct {
 	RecentLatencies   []time.Duration
 	LatencyWindowSize int
 
+	// history holds recent penalty events for diagnostics.
+	// Guarded by mu — never nil after NewProviderScore.
+	history *penaltyHistory
+
 	mu sync.RWMutex
 }
 
 // NewProviderScore creates a new provider score from an initial priority
 // Priority is inverted: priority 1 gets highest base score (100)
-func NewProviderScore(name string, priority int, latencyWindowSize int) *ProviderScore {
+func NewProviderScore(name string, priority int, latencyWindowSize int, historySize int) *ProviderScore {
 	// Convert priority to base score: priority 1 = 100, 2 = 90, 3 = 80, etc.
 	// Ensures priority 1 always starts ahead, but adaptive scoring can override
 	baseScore := 110.0 - (float64(priority) * 10.0)
@@ -57,6 +61,7 @@ func NewProviderScore(name string, priority int, latencyWindowSize int) *Provide
 		TotalOperations:   0,
 		SuccessfulOps:     0,
 		FailedOps:         0,
+		history:           newPenaltyHistory(historySize),
 	}
 }
 
@@ -77,8 +82,9 @@ func (ps *ProviderScore) EffectiveScore() float64 {
 	return score
 }
 
-// AddHealthPenalty adds a penalty for health check failures
-func (ps *ProviderScore) AddHealthPenalty(penalty float64, maxPenalty float64) {
+// AddHealthPenalty adds a penalty for health check failures.
+// reason is a human-readable explanation recorded in the penalty history.
+func (ps *ProviderScore) AddHealthPenalty(penalty float64, maxPenalty float64, reason string) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 
@@ -86,12 +92,20 @@ func (ps *ProviderScore) AddHealthPenalty(penalty float64, maxPenalty float64) {
 	if ps.HealthPenalty > maxPenalty {
 		ps.HealthPenalty = maxPenalty
 	}
-	ps.LastHealthCheck = time.Now()
-	ps.LastUpdated = time.Now()
+	now := time.Now()
+	ps.LastHealthCheck = now
+	ps.LastUpdated = now
+	ps.history.add(PenaltyRecord{
+		Timestamp: now,
+		Category:  PenaltyCategoryHealth,
+		Reason:    reason,
+		Amount:    penalty,
+	})
 }
 
-// AddRateLimitPenalty adds a penalty for rate limiting
-func (ps *ProviderScore) AddRateLimitPenalty(penalty float64, maxPenalty float64) {
+// AddRateLimitPenalty adds a penalty for rate limiting.
+// reason is a human-readable explanation recorded in the penalty history.
+func (ps *ProviderScore) AddRateLimitPenalty(penalty float64, maxPenalty float64, reason string) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 
@@ -99,11 +113,19 @@ func (ps *ProviderScore) AddRateLimitPenalty(penalty float64, maxPenalty float64
 	if ps.RateLimitPenalty > maxPenalty {
 		ps.RateLimitPenalty = maxPenalty
 	}
-	ps.LastUpdated = time.Now()
+	now := time.Now()
+	ps.LastUpdated = now
+	ps.history.add(PenaltyRecord{
+		Timestamp: now,
+		Category:  PenaltyCategoryRateLimit,
+		Reason:    reason,
+		Amount:    penalty,
+	})
 }
 
-// AddErrorPenalty adds a penalty for operation failures
-func (ps *ProviderScore) AddErrorPenalty(penalty float64, maxPenalty float64) {
+// AddErrorPenalty adds a penalty for operation failures.
+// reason is a human-readable explanation recorded in the penalty history.
+func (ps *ProviderScore) AddErrorPenalty(penalty float64, maxPenalty float64, reason string) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 
@@ -113,8 +135,15 @@ func (ps *ProviderScore) AddErrorPenalty(penalty float64, maxPenalty float64) {
 	}
 	ps.FailedOps++
 	ps.TotalOperations++
-	ps.LastOperation = time.Now()
-	ps.LastUpdated = time.Now()
+	now := time.Now()
+	ps.LastOperation = now
+	ps.LastUpdated = now
+	ps.history.add(PenaltyRecord{
+		Timestamp: now,
+		Category:  PenaltyCategoryError,
+		Reason:    reason,
+		Amount:    penalty,
+	})
 }
 
 // RecordSuccess records a successful operation and may reduce penalties
@@ -166,9 +195,10 @@ func (ps *ProviderScore) GetAverageLatency() time.Duration {
 	return sum / time.Duration(len(ps.RecentLatencies))
 }
 
-// UpdateLatencyPenalty updates the latency penalty based on comparison to peers
-// slownessFactor represents how much slower this provider is compared to peers (0 = average, >0 = slower)
-func (ps *ProviderScore) UpdateLatencyPenalty(slownessFactor float64, penaltyPerStdDev float64) {
+// UpdateLatencyPenalty updates the latency penalty based on comparison to peers.
+// slownessFactor represents how much slower this provider is compared to peers (0 = average, >0 = slower).
+// reason is a human-readable explanation; a penalty history entry is only recorded when penalty > 0.
+func (ps *ProviderScore) UpdateLatencyPenalty(slownessFactor float64, penaltyPerStdDev float64, reason string) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 
@@ -182,7 +212,17 @@ func (ps *ProviderScore) UpdateLatencyPenalty(slownessFactor float64, penaltyPer
 		ps.LatencyPenalty = 0
 	}
 
-	ps.LastUpdated = time.Now()
+	now := time.Now()
+	ps.LastUpdated = now
+
+	if penalty > 0 && reason != "" {
+		ps.history.add(PenaltyRecord{
+			Timestamp: now,
+			Category:  PenaltyCategoryLatency,
+			Reason:    reason,
+			Amount:    penalty,
+		})
+	}
 }
 
 // ApplyDecay reduces all penalties by a decay rate (for gradual recovery)
@@ -235,6 +275,7 @@ func (ps *ProviderScore) GetStats() ProviderScoreStats {
 		SuccessRate:      successRate,
 		AverageLatency:   ps.getAverageLatencyUnsafe(),
 		LastUpdated:      ps.LastUpdated,
+		RecentPenalties:  ps.history.snapshot(),
 	}
 }
 
@@ -267,4 +308,5 @@ type ProviderScoreStats struct {
 	SuccessRate      float64
 	AverageLatency   time.Duration
 	LastUpdated      time.Time
+	RecentPenalties  []PenaltyRecord
 }

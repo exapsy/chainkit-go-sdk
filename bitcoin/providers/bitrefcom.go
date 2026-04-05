@@ -95,7 +95,7 @@ func (b *Bitrefcom) callAPI(
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(respBody))
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
 	}
 
 	responseBody, err := io.ReadAll(resp.Body)
@@ -107,7 +107,6 @@ func (b *Bitrefcom) callAPI(
 }
 
 func (b *Bitrefcom) GetTxFee(ctx context.Context, priority types.FeePriority) (types.FeeTier, error) {
-
 	endpoint := fmt.Sprintf("/v1/fees/estimate/%d", priority.TargetBlock())
 
 	body, err := b.callAPI(ctx, http.MethodGet, endpoint, nil)
@@ -144,7 +143,6 @@ func (b *Bitrefcom) GetTxFee(ctx context.Context, priority types.FeePriority) (t
 }
 
 func (b *Bitrefcom) GetTxFees(ctx context.Context) ([]types.FeeTier, error) {
-
 	endpoint := "/v1/fees/estimates"
 
 	body, err := b.callAPI(ctx, http.MethodGet, endpoint, nil)
@@ -194,7 +192,6 @@ func (b *Bitrefcom) GetTxFees(ctx context.Context) ([]types.FeeTier, error) {
 
 // PushTx broadcasts a raw transaction to the Bitcoin network.
 func (b *Bitrefcom) PushTx(ctx context.Context, rawTx []byte) (txID string, err error) {
-
 	endpoint := "/v1/tx/broadcast"
 
 	// Prepare request body
@@ -206,7 +203,7 @@ func (b *Bitrefcom) PushTx(ctx context.Context, rawTx []byte) (txID string, err 
 
 	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal request body: %w", err)
+		return "", fmt.Errorf("marshal request body: %w", err)
 	}
 
 	// Make the API call
@@ -217,7 +214,7 @@ func (b *Bitrefcom) PushTx(ctx context.Context, rawTx []byte) (txID string, err 
 		bytes.NewBuffer(jsonData),
 	)
 	if err != nil {
-		return "", fmt.Errorf("failed to broadcast transaction: %w", err)
+		return "", fmt.Errorf("broadcast transaction: %w", err)
 	}
 
 	// Parse the response
@@ -226,7 +223,7 @@ func (b *Bitrefcom) PushTx(ctx context.Context, rawTx []byte) (txID string, err 
 	}
 
 	if err := json.Unmarshal(responseBody, &response); err != nil {
-		return "", fmt.Errorf("failed to parse response: %w", err)
+		return "", fmt.Errorf("parse response: %w", err)
 	}
 
 	return response.TxID, nil
@@ -243,13 +240,13 @@ func (b *Bitrefcom) fetchBalanceData(ctx context.Context, address string) (*bala
 	endpoint := fmt.Sprintf("/v1/address/%s/balance", address)
 	body, err := b.callAPI(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch address details: %w", err)
+		return nil, fmt.Errorf("fetch address details: %w", err)
 	}
 
 	var resp balanceResponse
 	err = json.Unmarshal(body, &resp)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("parse response: %w", err)
 	}
 
 	return &resp, nil
@@ -276,7 +273,7 @@ func (b *Bitrefcom) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 	// Bitref.com only supports mainnet - if baseURL is empty, provider is not configured
 	if b.baseURL == "" {
 		return chainkit.HealthStatus{
-			Status: chainkit.HealthLevelDown,
+			Status:         chainkit.HealthLevelDown,
 			ResponseTimeMs: 0,
 			ResponseTimeUs: 0,
 			Error:          "Bitref.com only supports Bitcoin mainnet",
@@ -291,7 +288,7 @@ func (b *Bitrefcom) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return chainkit.HealthStatus{
-			Status: chainkit.HealthLevelDown,
+			Status:         chainkit.HealthLevelDown,
 			ResponseTimeMs: 0,
 			ResponseTimeUs: 0,
 			Error:          err.Error(),
@@ -311,7 +308,7 @@ func (b *Bitrefcom) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 
 	if err != nil {
 		return chainkit.HealthStatus{
-			Status: chainkit.HealthLevelDown,
+			Status:         chainkit.HealthLevelDown,
 			ResponseTimeMs: responseTimeMs,
 			ResponseTimeUs: responseTimeUs,
 			Error:          err.Error(),

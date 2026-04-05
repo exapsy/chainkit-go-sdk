@@ -45,7 +45,8 @@ func ToStoreData(ps *ProviderScore) *store.ProviderScoreData {
 // FromStoreData converts serialized score data back to a ProviderScore.
 // This is used when loading scores from a store.
 // The latencyWindowSize parameter sets the capacity for future latency samples.
-func FromStoreData(data *store.ProviderScoreData, latencyWindowSize int) *ProviderScore {
+// The historySize parameter sets the capacity of the in-memory penalty ring buffer.
+func FromStoreData(data *store.ProviderScoreData, latencyWindowSize int, historySize int) *ProviderScore {
 	if data == nil {
 		return nil
 	}
@@ -64,6 +65,7 @@ func FromStoreData(data *store.ProviderScoreData, latencyWindowSize int) *Provid
 		LastHealthCheck:   data.LastHealthCheck,
 		LastOperation:     data.LastOperation,
 		LatencyWindowSize: latencyWindowSize,
+		history:           newPenaltyHistory(historySize),
 	}
 
 	// Convert int64 nanoseconds back to time.Duration
@@ -148,7 +150,7 @@ func AllScoresToStoreData(scores map[string]*ProviderScore) []*store.ProviderSco
 
 // AllScoresFromStoreData converts serialized score data back to provider scores.
 // This is a convenience function for batch operations.
-func AllScoresFromStoreData(data []*store.ProviderScoreData, latencyWindowSize int) map[string]*ProviderScore {
+func AllScoresFromStoreData(data []*store.ProviderScoreData, latencyWindowSize int, historySize int) map[string]*ProviderScore {
 	if len(data) == 0 {
 		return make(map[string]*ProviderScore)
 	}
@@ -156,7 +158,7 @@ func AllScoresFromStoreData(data []*store.ProviderScoreData, latencyWindowSize i
 	scores := make(map[string]*ProviderScore, len(data))
 	for _, d := range data {
 		if d != nil && d.Name != "" {
-			scores[d.Name] = FromStoreData(d, latencyWindowSize)
+			scores[d.Name] = FromStoreData(d, latencyWindowSize, historySize)
 		}
 	}
 

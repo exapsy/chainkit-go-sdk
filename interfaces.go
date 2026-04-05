@@ -158,18 +158,19 @@ type RateFetcher interface {
 type ProviderCapability string
 
 const (
-	CapabilityAddressGeneration  ProviderCapability = "address_generation"
-	CapabilityAddressValidation  ProviderCapability = "address_validation"
-	CapabilityBalanceFetching    ProviderCapability = "balance_fetching"
-	CapabilityFeeRecommending    ProviderCapability = "fee_recommending" // FeeRecommender
-	CapabilityFeeEstimation      ProviderCapability = "fee_estimation"   // FeeEstimator
-	CapabilityRateFetching       ProviderCapability = "rate_fetching"
-	CapabilityTxAssembly         ProviderCapability = "tx_assembly"
-	CapabilityTxBroadcast        ProviderCapability = "tx_broadcast"
-	CapabilityTxSigning          ProviderCapability = "tx_signing"
-	CapabilityTxSizing           ProviderCapability = "tx_sizing"
-	CapabilityTxStatusFetching   ProviderCapability = "tx_status_fetching"
-	CapabilityUTXOFetching       ProviderCapability = "utxo_fetching"
+	CapabilityAddressGeneration ProviderCapability = "address_generation"
+	CapabilityAddressValidation ProviderCapability = "address_validation"
+	CapabilityAPIKeyValidation  ProviderCapability = "api_key_validation"
+	CapabilityBalanceFetching   ProviderCapability = "balance_fetching"
+	CapabilityFeeRecommending   ProviderCapability = "fee_recommending" // FeeRecommender
+	CapabilityFeeEstimation     ProviderCapability = "fee_estimation"   // FeeEstimator
+	CapabilityRateFetching      ProviderCapability = "rate_fetching"
+	CapabilityTxAssembly        ProviderCapability = "tx_assembly"
+	CapabilityTxBroadcast       ProviderCapability = "tx_broadcast"
+	CapabilityTxSigning         ProviderCapability = "tx_signing"
+	CapabilityTxSizing          ProviderCapability = "tx_sizing"
+	CapabilityTxStatusFetching  ProviderCapability = "tx_status_fetching"
+	CapabilityUTXOFetching      ProviderCapability = "utxo_fetching"
 )
 
 // HealthLevel is the typed status of a provider health check.
@@ -182,6 +183,16 @@ const (
 )
 
 // HealthStatus describes the current health of a provider.
+//
+// Providers that support graceful degradation (e.g., Coingecko, Blockcypher) may
+// fall back to a public/free tier when an API key is invalid or rate-limited.
+// In such cases, Status should remain HealthLevelHealthy or HealthLevelDegraded
+// (since the provider is still functional), but AuthValid will be set to false
+// and AuthError will contain the specific reason (e.g., "token expired",
+// "rate limit exceeded").
+//
+// The IsDegraded flag is a helper to explicitly mark when a provider is
+// functioning but with limited capabilities due to auth issues or rate limits.
 type HealthStatus struct {
 	Status         HealthLevel
 	ResponseTimeMs int64
@@ -189,11 +200,33 @@ type HealthStatus struct {
 	HTTPStatus     int
 	Error          string
 	LastChecked    time.Time
+
+	// AuthValid indicates whether the provider's API key/credentials are valid.
+	// nil means the provider does not use authentication (public API).
+	// true means authentication succeeded.
+	// false means authentication failed but the provider may still be usable
+	// via a public tier (check IsDegraded).
+	AuthValid *bool
+
+	// AuthError contains the specific reason for authentication failure,
+	// e.g., "token expired", "invalid API key", "rate limit exceeded".
+	// Empty if AuthValid is nil or true.
+	AuthError string
+
+	// IsDegraded is true when the provider is functional but operating with
+	// limited capabilities, typically due to auth issues or rate limiting
+	// causing a fallback to a public/free tier.
+	IsDegraded bool
 }
 
 // HealthChecker can report its own health status.
 type HealthChecker interface {
 	CheckHealth(ctx context.Context) HealthStatus
+}
+
+// APIKeyValidator checks whether the provider's API key is valid.
+type APIKeyValidator interface {
+	ValidateAPIKey(ctx context.Context) error
 }
 
 // CapabilityReporter can enumerate the capabilities it implements.

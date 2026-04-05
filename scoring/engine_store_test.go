@@ -428,7 +428,7 @@ func TestEngine_LoadFromStore_EmptyStore(t *testing.T) {
 // TestEngine_ConversionRoundTrip tests conversion between ProviderScore and ProviderScoreData
 func TestEngine_ConversionRoundTrip(t *testing.T) {
 	// Create a ProviderScore
-	ps := NewProviderScore("test-provider", 1, 100)
+	ps := NewProviderScore("test-provider", 1, 100, 50)
 	ps.HealthPenalty = 5.0
 	ps.LatencyPenalty = 2.0
 	ps.ErrorPenalty = 3.0
@@ -461,7 +461,7 @@ func TestEngine_ConversionRoundTrip(t *testing.T) {
 	}
 
 	// Convert back to ProviderScore
-	ps2 := FromStoreData(data, 100)
+	ps2 := FromStoreData(data, 100, 50)
 	if ps2 == nil {
 		t.Fatal("FromStoreData returned nil")
 	}
