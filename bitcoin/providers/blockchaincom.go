@@ -45,6 +45,8 @@ func (p *blockchainCom) Name() string {
 
 // GetBalance fetches the confirmed balance for the given address.
 // blockchain.info's Q API returns a plain-text integer (satoshis).
+// A 404 response means the address has no on-chain history (never seen in any
+// transaction), which is treated as a zero balance rather than an error.
 func (p *blockchainCom) GetBalance(ctx context.Context, address string) (chainkit.Balance, error) {
 	endpoint := blockchainComBaseURL + "/q/addressbalance/" + address
 
@@ -58,6 +60,11 @@ func (p *blockchainCom) GetBalance(ctx context.Context, address string) (chainki
 		return chainkit.Balance{}, fmt.Errorf("fetch balance for %s: %w", address, err)
 	}
 	defer resp.Body.Close()
+
+	// 404 means the address has never appeared in any transaction; treat as zero balance.
+	if resp.StatusCode == http.StatusNotFound {
+		return chainkit.Balance{}, nil
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
