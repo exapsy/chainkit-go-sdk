@@ -196,7 +196,7 @@ func Example_redisStoreMultiTenancy() {
 		fmt.Println("Multi-tenant stores created with isolated keys")
 		return
 	}
-	defer store1.Close()
+	defer func() { _ = store1.Close() }()
 
 	// Tenant 2
 	config2 := store.RedisConfig{
@@ -209,7 +209,7 @@ func Example_redisStoreMultiTenancy() {
 		fmt.Println("Multi-tenant stores created with isolated keys")
 		return
 	}
-	defer store2.Close()
+	defer func() { _ = store2.Close() }()
 
 	ctx := context.Background()
 
@@ -384,7 +384,7 @@ func Example_redisStoreViaConfig() {
 		fmt.Println("Store type: redis")
 		return
 	}
-	defer redisStore.Close()
+	defer func() { _ = redisStore.Close() }()
 
 	// Use with engine
 	engine := scoring.NewEngine(

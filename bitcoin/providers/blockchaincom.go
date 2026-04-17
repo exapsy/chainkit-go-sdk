@@ -59,7 +59,7 @@ func (p *blockchainCom) GetBalance(ctx context.Context, address string) (chainki
 	if err != nil {
 		return chainkit.Balance{}, fmt.Errorf("fetch balance for %s: %w", address, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// 404 means the address has never appeared in any transaction; treat as zero balance.
 	if resp.StatusCode == http.StatusNotFound {
@@ -111,7 +111,7 @@ func (p *blockchainCom) PushTx(ctx context.Context, rawTx []byte) (string, error
 	if err != nil {
 		return "", fmt.Errorf("broadcast transaction: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -177,7 +177,7 @@ func (p *blockchainCom) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 			LastChecked:    time.Now(),
 		}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	status := chainkit.HealthLevelHealthy
 	errorMsg := ""

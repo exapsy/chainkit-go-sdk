@@ -227,7 +227,7 @@ func (p *blockcypher) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 			IsDegraded:     authValid != nil && !*authValid,
 		}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	status := chainkit.HealthLevelHealthy
 	errorMsg := ""
@@ -316,7 +316,7 @@ func (p *blockcypher) ValidateAPIKey(ctx context.Context) error {
 		setAuthState(false, err)
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		var errResp struct {

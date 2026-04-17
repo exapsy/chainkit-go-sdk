@@ -77,7 +77,7 @@ func (s *coingecko) GetExchangeRates(
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -148,7 +148,7 @@ func (s *coingecko) GetExchangeRate(
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -218,7 +218,7 @@ func (s *coingecko) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 			LastChecked:    time.Now(),
 		}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	status := chainkit.HealthLevelHealthy
 	errorMsg := ""
@@ -307,7 +307,7 @@ func (s *coingecko) ValidateAPIKey(ctx context.Context) error {
 		s.authMu.Unlock()
 		return s.authErr
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 		s.authMu.Lock()

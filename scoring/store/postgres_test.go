@@ -533,7 +533,7 @@ func TestPostgresStore_TablePrefix(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewPostgresStore failed: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	ctx := context.Background()
 
@@ -753,7 +753,7 @@ func setupPostgresStore(t testing.TB) (*PostgresStore, func()) {
 		ctx := context.Background()
 		_, _ = store.pool.Exec(ctx, fmt.Sprintf("TRUNCATE TABLE %sprovider_scores", store.tablePrefix))
 		_, _ = store.pool.Exec(ctx, fmt.Sprintf("DELETE FROM %slatency_stats WHERE id = 1", store.tablePrefix))
-		store.Close()
+		_ = store.Close()
 	}
 
 	return store, cleanup

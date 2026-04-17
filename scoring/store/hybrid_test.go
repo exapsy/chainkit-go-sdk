@@ -95,7 +95,7 @@ func setupHybridStoreTest(t *testing.T) (*HybridStore, func()) {
 
 	// Cleanup function
 	cleanup := func() {
-		hybridStore.Close()
+		_ = hybridStore.Close()
 		_ = postgresContainer.Terminate(ctx)
 		_ = redisContainer.Terminate(ctx)
 	}
@@ -220,7 +220,7 @@ func TestHybridStore_CacheTTL(t *testing.T) {
 		WriteThrough: true,
 	})
 	require.NoError(t, err)
-	defer hybridStore.Close()
+	defer func() { _ = hybridStore.Close() }()
 
 	ctx := context.Background()
 
@@ -270,7 +270,7 @@ func TestHybridStore_WriteThroughMode(t *testing.T) {
 		AsyncWrite:   false,
 	})
 	require.NoError(t, err)
-	defer hybridStore.Close()
+	defer func() { _ = hybridStore.Close() }()
 
 	ctx := context.Background()
 
@@ -302,7 +302,7 @@ func TestHybridStore_WriteBehindMode(t *testing.T) {
 		WriteThrough: false, // Write-behind mode
 	})
 	require.NoError(t, err)
-	defer hybridStore.Close()
+	defer func() { _ = hybridStore.Close() }()
 
 	ctx := context.Background()
 
@@ -336,7 +336,7 @@ func TestHybridStore_InvalidateOnWrite(t *testing.T) {
 		InvalidateOnWrite: true,
 	})
 	require.NoError(t, err)
-	defer hybridStore.Close()
+	defer func() { _ = hybridStore.Close() }()
 
 	ctx := context.Background()
 
@@ -369,7 +369,7 @@ func TestHybridStore_AsyncWrite(t *testing.T) {
 		AsyncWrite:   true, // Async cache writes
 	})
 	require.NoError(t, err)
-	defer hybridStore.Close()
+	defer func() { _ = hybridStore.Close() }()
 
 	ctx := context.Background()
 
@@ -610,7 +610,7 @@ func TestHybridStore_InvalidateAll(t *testing.T) {
 		WriteThrough: true,
 	})
 	require.NoError(t, err)
-	defer hybridStore.Close()
+	defer func() { _ = hybridStore.Close() }()
 
 	ctx := context.Background()
 
@@ -647,7 +647,7 @@ func TestHybridStore_GetPrimaryAndCache(t *testing.T) {
 		Cache:   cacheStore,
 	})
 	require.NoError(t, err)
-	defer hybridStore.Close()
+	defer func() { _ = hybridStore.Close() }()
 
 	// Verify getters return correct stores
 	assert.Equal(t, primaryStore, hybridStore.GetPrimary())
@@ -693,7 +693,7 @@ func TestHybridStore_ConfigValidation(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 				assert.NotNil(t, store)
-				store.Close()
+				_ = store.Close()
 			}
 		})
 	}
@@ -714,7 +714,7 @@ func BenchmarkHybridStore_SetScore(b *testing.B) {
 		WriteThrough: true,
 	})
 	require.NoError(b, err)
-	defer hybridStore.Close()
+	defer func() { _ = hybridStore.Close() }()
 
 	ctx := context.Background()
 	data := &ProviderScoreData{
@@ -741,7 +741,7 @@ func BenchmarkHybridStore_GetScore_CacheHit(b *testing.B) {
 		WriteThrough: true,
 	})
 	require.NoError(b, err)
-	defer hybridStore.Close()
+	defer func() { _ = hybridStore.Close() }()
 
 	ctx := context.Background()
 	data := &ProviderScoreData{
@@ -772,7 +772,7 @@ func BenchmarkHybridStore_GetScore_CacheMiss(b *testing.B) {
 		WriteThrough: true,
 	})
 	require.NoError(b, err)
-	defer hybridStore.Close()
+	defer func() { _ = hybridStore.Close() }()
 
 	ctx := context.Background()
 	data := &ProviderScoreData{

@@ -333,7 +333,7 @@ func TestRedisStore_TTL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRedisStore failed: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	ctx := context.Background()
 
@@ -643,7 +643,7 @@ func TestRedisStore_KeyPrefix(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRedisStore failed: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	ctx := context.Background()
 
@@ -755,7 +755,7 @@ func setupRedisStore(t testing.TB) (*RedisStore, func()) {
 		for iter.Next(ctx) {
 			store.client.Del(ctx, iter.Val())
 		}
-		store.Close()
+		_ = store.Close()
 	}
 
 	return store, cleanup

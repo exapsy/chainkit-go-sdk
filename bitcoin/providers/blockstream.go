@@ -65,15 +65,15 @@ type BlockstreamOptions struct {
 // Returns an error if required fields are missing.
 func NewBlockstream(options BlockstreamOptions) (BlockstreamProvider, error) {
 	if options.ClientID == "" || options.ClientSecret == "" {
-		return nil, errors.New("Blockstream: API client ID and secret are required")
+		return nil, errors.New("blockstream: API client ID and secret are required")
 	}
 
 	if options.BaseURL == "" {
-		return nil, errors.New("Blockstream: BaseURL is required; ensure config/providers/blockstream.yaml has an entry for the active network")
+		return nil, errors.New("blockstream: BaseURL is required; ensure config/providers/blockstream.yaml has an entry for the active network")
 	}
 
 	if options.LoginURL == "" {
-		return nil, errors.New("Blockstream: LoginURL is required; ensure config/providers/blockstream.yaml has an entry for the active network")
+		return nil, errors.New("blockstream: LoginURL is required; ensure config/providers/blockstream.yaml has an entry for the active network")
 	}
 
 	if options.ConfirmationMonitorInterval == 0 {
@@ -215,7 +215,7 @@ func (p *blockstream) GetAccessToken(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("error fetching access token: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -283,13 +283,13 @@ func (p *blockstream) callAPI(
 		switch resp.StatusCode {
 		case http.StatusOK:
 			body, err := io.ReadAll(resp.Body)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if err != nil {
 				return nil, fmt.Errorf("read response body: %w", err)
 			}
 			return body, nil
 		case http.StatusUnauthorized:
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if retried {
 				return nil, fmt.Errorf("HTTP 401: unauthorized after token refresh: %w", chainkit.ErrAuthFailure)
 			}
@@ -299,14 +299,14 @@ func (p *blockstream) callAPI(
 			p.accessToken = ""
 			p.tokenMu.Unlock()
 		case http.StatusNotFound:
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return nil, fmt.Errorf("HTTP 404: not found")
 		case http.StatusTooManyRequests:
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return nil, fmt.Errorf("HTTP 429: rate limit exceeded")
 		default:
 			body, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 		}
 	}
@@ -346,13 +346,13 @@ func (p *blockstream) callAPIWithStringBody(
 		switch resp.StatusCode {
 		case http.StatusOK:
 			respBody, err := io.ReadAll(resp.Body)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if err != nil {
 				return nil, fmt.Errorf("read response body: %w", err)
 			}
 			return respBody, nil
 		case http.StatusUnauthorized:
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if retried {
 				return nil, fmt.Errorf("HTTP 401: unauthorized after token refresh: %w", chainkit.ErrAuthFailure)
 			}
@@ -361,14 +361,14 @@ func (p *blockstream) callAPIWithStringBody(
 			p.accessToken = ""
 			p.tokenMu.Unlock()
 		case http.StatusNotFound:
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return nil, errors.New("transaction not found")
 		case http.StatusTooManyRequests:
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return nil, errors.New("rate limit exceeded")
 		default:
 			body, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 		}
 	}
@@ -463,7 +463,7 @@ func (p *blockstream) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 			LastChecked:    time.Now(),
 		}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	status := chainkit.HealthLevelHealthy
 	errorMsg := ""

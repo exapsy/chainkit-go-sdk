@@ -67,7 +67,7 @@ func (b *binance) fetchPrice(ctx context.Context, symbol string) (float64, error
 	if err != nil {
 		return 0, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -183,7 +183,7 @@ func (b *binance) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 			LastChecked:    time.Now(),
 		}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	status := chainkit.HealthLevelHealthy
 	errorMsg := ""

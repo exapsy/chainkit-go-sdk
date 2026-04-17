@@ -79,7 +79,7 @@ func (m *mempoolProvider) fetchPrice(ctx context.Context, currency string) (floa
 	if err != nil {
 		return 0, fmt.Errorf("failed to fetch prices: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return 0, fmt.Errorf("failed to fetch prices: %s", resp.Status)
@@ -181,7 +181,7 @@ func (m *mempoolProvider) GetBalance(ctx context.Context, address string) (chain
 	if err != nil {
 		return chainkit.Balance{}, &types.RequestError{Err: err, Message: "failed to fetch balance"}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
@@ -233,7 +233,7 @@ func (m *mempoolProvider) GetTxFees(ctx context.Context) ([]types.FeeTier, error
 	if err != nil {
 		return nil, &types.RequestError{Err: err, Message: "failed to fetch fees"}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
@@ -290,7 +290,7 @@ func (m *mempoolProvider) PushTx(ctx context.Context, rawTx []byte) (string, err
 	if err != nil {
 		return "", &types.RequestError{Err: err, Message: "failed to broadcast transaction"}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, _ := io.ReadAll(resp.Body)
 
@@ -335,7 +335,7 @@ func (m *mempoolProvider) CheckHealth(ctx context.Context) chainkit.HealthStatus
 			LastChecked:    time.Now(),
 		}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	status := chainkit.HealthLevelHealthy
 	errorMsg := ""
@@ -387,7 +387,7 @@ func (m *mempoolProvider) GetUTXOs(ctx context.Context, address string) ([]types
 	if err != nil {
 		return nil, &types.RequestError{Err: err, Message: "failed to fetch UTXOs"}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
@@ -482,7 +482,7 @@ func (m *mempoolProvider) GetTxStatus(ctx context.Context, txID string) (*chaink
 	if err != nil {
 		return nil, &types.RequestError{Err: err, Message: "failed to fetch transaction"}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, &types.RequestError{Message: "transaction not found"}
@@ -545,7 +545,7 @@ func (m *mempoolProvider) getCurrentBlockHeight(ctx context.Context) (int64, err
 	if err != nil {
 		return 0, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return 0, fmt.Errorf("unexpected status code: %d", resp.StatusCode)

@@ -163,7 +163,7 @@ func init() {
 		// Create cache store
 		cache, err := NewStore(hc.Cache)
 		if err != nil {
-			primary.Close() // Clean up primary on failure
+			_ = primary.Close() // Clean up primary on failure
 			return nil, fmt.Errorf("failed to create cache store: %w", err)
 		}
 

@@ -95,7 +95,7 @@ func (t *tatumProvider) call(ctx context.Context, method string, params interfac
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -286,7 +286,7 @@ func (t *tatumProvider) ValidateAPIKey(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("validate API key: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 		authErr := fmt.Errorf("invalid API key or credentials (HTTP %d)", resp.StatusCode)

@@ -51,7 +51,7 @@ func NewRedisStore(config RedisConfig) (*RedisStore, error) {
 	defer cancel()
 
 	if err := client.Ping(ctx).Err(); err != nil {
-		client.Close()
+		_ = client.Close()
 		return nil, fmt.Errorf("redis connection failed: %w", err)
 	}
 
@@ -285,7 +285,7 @@ func (r *RedisStore) publishScoreUpdate(ctx context.Context, data *ProviderScore
 // This uses Redis pub/sub and blocks until the context is canceled.
 func (r *RedisStore) Watch(ctx context.Context, callback func(providerName string, data *ProviderScoreData)) error {
 	pubsub := r.client.Subscribe(ctx, r.eventChannel())
-	defer pubsub.Close()
+	defer func() { _ = pubsub.Close() }()
 
 	// Wait for subscription confirmation
 	if _, err := pubsub.Receive(ctx); err != nil {

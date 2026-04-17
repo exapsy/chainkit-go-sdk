@@ -365,7 +365,8 @@ func (pm *providerManager) isProviderAvailable(providerName string, now time.Tim
 	// Check circuit breaker state
 	if pm.config.CircuitBreaker.Enabled {
 		if cs, exists := pm.circuitStates[providerName]; exists {
-			if cs.State == "OPEN" {
+			switch cs.State {
+			case "OPEN":
 				// Check if timeout has passed to try half-open
 				if now.Sub(cs.LastStateChange) >= pm.config.CircuitBreaker.Timeout {
 					cs.State = "HALF_OPEN"
@@ -374,7 +375,7 @@ func (pm *providerManager) isProviderAvailable(providerName string, now time.Tim
 				} else {
 					return false // Still open
 				}
-			} else if cs.State == "HALF_OPEN" {
+			case "HALF_OPEN":
 				// Limit calls in half-open state
 				if cs.HalfOpenCalls >= pm.config.CircuitBreaker.HalfOpenMaxCalls {
 					return false
