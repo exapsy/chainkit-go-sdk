@@ -206,6 +206,11 @@ func (e *Engine) RecordEvent(event ScoreEvent) {
 		score.AddHealthPenalty(e.config.AuthFailurePenalty, e.config.MaxPenalty, reason)
 		e.persistPenalty(event.Provider, PenaltyCategoryHealth, reason, e.config.AuthFailurePenalty, ts)
 
+	case EventOperationAuthFail:
+		const reason = "operation authentication failure"
+		score.AddHealthPenalty(e.config.AuthFailurePenalty, e.config.MaxPenalty, reason)
+		e.persistPenalty(event.Provider, PenaltyCategoryHealth, reason, e.config.AuthFailurePenalty, ts)
+
 	case EventHealthCheckTimeout:
 		const reason = "health check timed out"
 		score.AddHealthPenalty(e.config.TimeoutPenalty, e.config.MaxPenalty, reason)

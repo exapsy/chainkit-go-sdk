@@ -26,6 +26,11 @@ const (
 	// EventOperationFailed indicates a provider operation failed
 	EventOperationFailed ScoreEventType = "operation_failed"
 
+	// EventOperationAuthFail indicates an operation failed due to invalid credentials.
+	// Unlike transient failures, this signals a configuration problem and triggers
+	// a higher penalty and faster circuit-breaker escalation.
+	EventOperationAuthFail ScoreEventType = "operation_auth_fail"
+
 	// EventOperationSuccess indicates a provider operation succeeded
 	EventOperationSuccess ScoreEventType = "operation_success"
 
@@ -101,9 +106,10 @@ func ClassifyOperationEvent(providerName string, responseTime time.Duration, err
 	}
 
 	if err != nil {
-		// Check if error message contains rate limit indicators
 		errMsg := err.Error()
-		if containsRateLimitIndicator(errMsg) {
+		if containsAuthFailureIndicator(errMsg) {
+			event.Type = EventOperationAuthFail
+		} else if containsRateLimitIndicator(errMsg) {
 			event.Type = EventRateLimited
 		} else {
 			event.Type = EventOperationFailed
@@ -113,6 +119,26 @@ func ClassifyOperationEvent(providerName string, responseTime time.Duration, err
 	}
 
 	return event
+}
+
+// containsAuthFailureIndicator checks if an error message indicates an auth failure.
+// This is a string-matching fallback for providers that don't wrap ErrAuthFailure.
+// Providers that use ErrAuthFailure are detected via errors.Is in the manager before
+// ClassifyOperationEvent is called, so this catches only third-party or legacy cases.
+func containsAuthFailureIndicator(errMsg string) bool {
+	indicators := []string{
+		"authentication failed",
+		"unauthorized",
+		"invalid client",
+		"invalid credentials",
+		"access denied",
+	}
+	for _, indicator := range indicators {
+		if contains(errMsg, indicator) {
+			return true
+		}
+	}
+	return false
 }
 
 // containsRateLimitIndicator checks if an error message indicates rate limiting

@@ -46,6 +46,12 @@ import (
 // that has no provider registered in the builder.
 var ErrProviderNotConfigured = errors.New("provider not configured")
 
+// ErrAuthFailure is returned by a provider when its credentials are invalid or missing.
+// Providers should wrap this sentinel (fmt.Errorf("...: %w", ErrAuthFailure)) so the
+// provider manager can distinguish permanent credential problems from transient errors
+// and skip the provider immediately rather than retrying.
+var ErrAuthFailure = errors.New("authentication failed")
+
 // Context keys for provider tracking.
 type contextKey string
 

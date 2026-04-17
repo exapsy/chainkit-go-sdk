@@ -219,6 +219,9 @@ func (p *blockstream) GetAccessToken(ctx context.Context) (string, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusBadRequest {
+			return "", fmt.Errorf("token endpoint returned %d (%s): %w", resp.StatusCode, strings.TrimSpace(string(body)), chainkit.ErrAuthFailure)
+		}
 		return "", fmt.Errorf("token endpoint returned %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -288,7 +291,7 @@ func (p *blockstream) callAPI(
 		case http.StatusUnauthorized:
 			resp.Body.Close()
 			if retried {
-				return nil, errors.New("HTTP 401: unauthorized after token refresh")
+				return nil, fmt.Errorf("HTTP 401: unauthorized after token refresh: %w", chainkit.ErrAuthFailure)
 			}
 			retried = true
 			// Invalidate cached token so GetAccessToken fetches a fresh one
@@ -351,7 +354,7 @@ func (p *blockstream) callAPIWithStringBody(
 		case http.StatusUnauthorized:
 			resp.Body.Close()
 			if retried {
-				return nil, errors.New("HTTP 401: unauthorized after token refresh")
+				return nil, fmt.Errorf("HTTP 401: unauthorized after token refresh: %w", chainkit.ErrAuthFailure)
 			}
 			retried = true
 			p.tokenMu.Lock()

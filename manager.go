@@ -2,6 +2,7 @@ package chainkit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"math/rand"
@@ -30,13 +31,14 @@ type providerManager struct {
 
 // failureInfo tracks failure statistics for a provider with enhanced retry tracking
 type failureInfo struct {
-	ConsecutiveFailures int
-	LastFailureTime     time.Time
-	IsTemporarilyDown   bool
-	TotalFailures       int64
-	TotalSuccesses      int64
-	LastRetryAttempt    time.Time
-	RetryCount          int
+	ConsecutiveFailures     int
+	LastFailureTime         time.Time
+	IsTemporarilyDown       bool
+	TotalFailures           int64
+	TotalSuccesses          int64
+	LastRetryAttempt        time.Time
+	RetryCount              int
+	ConsecutiveAuthFailures int
 }
 
 // circuitState tracks circuit breaker state for a provider
@@ -413,6 +415,7 @@ func (pm *providerManager) recordSuccess(providerName string) {
 		failure.IsTemporarilyDown = false
 		failure.TotalSuccesses++
 		failure.RetryCount = 0
+		failure.ConsecutiveAuthFailures = 0
 	}
 
 	// Update circuit breaker state
@@ -625,17 +628,70 @@ func (pm *providerManager) GetScoringEngine() *scoring.Engine {
 	return pm.scoringEngine
 }
 
+// authFailureCircuitThreshold is the number of consecutive auth failures that
+// causes the circuit breaker to open immediately, bypassing the normal failure threshold.
+// Auth failures signal a configuration problem (bad credentials), not a transient error,
+// so we skip the provider faster than generic failures would trigger.
+const authFailureCircuitThreshold = 3
+
 // recordFailureWithError records a failure with error classification for scoring.
 // Unlike recordFailure, it emits only the classified event (not a generic EventOperationFailed
 // first), so a single operation failure produces exactly one scoring event.
+// When err wraps ErrAuthFailure, the provider's circuit breaker is opened after
+// authFailureCircuitThreshold consecutive auth failures.
 func (pm *providerManager) recordFailureWithError(providerName string, err error, responseTime time.Duration) {
 	now := time.Now()
 	pm.updateFailureState(providerName, now)
 
 	if pm.scoringEngine != nil {
-		event := scoring.ClassifyOperationEvent(providerName, responseTime, err)
-		event.Timestamp = now
+		var event scoring.ScoreEvent
+		if errors.Is(err, ErrAuthFailure) {
+			// Auth failures are classified directly without string matching, ensuring
+			// the heavy AuthFailurePenalty is applied regardless of error message wording.
+			event = scoring.ScoreEvent{
+				Type:         scoring.EventOperationAuthFail,
+				Provider:     providerName,
+				Timestamp:    now,
+				ResponseTime: responseTime,
+				Error:        err,
+			}
+		} else {
+			event = scoring.ClassifyOperationEvent(providerName, responseTime, err)
+			event.Timestamp = now
+		}
 		pm.scoringEngine.RecordEvent(event)
+	}
+
+	if errors.Is(err, ErrAuthFailure) {
+		pm.handleAuthFailure(providerName, now)
+	}
+}
+
+// handleAuthFailure tracks consecutive auth failures per provider and opens the
+// circuit breaker after authFailureCircuitThreshold consecutive failures.
+// Must NOT be called with pm.mutex held.
+func (pm *providerManager) handleAuthFailure(providerName string, now time.Time) {
+	pm.mutex.Lock()
+	defer pm.mutex.Unlock()
+
+	failure, exists := pm.failureTracker[providerName]
+	if !exists {
+		return
+	}
+
+	failure.ConsecutiveAuthFailures++
+	if failure.ConsecutiveAuthFailures < authFailureCircuitThreshold {
+		return
+	}
+
+	// Threshold reached: open the circuit breaker immediately so the provider is
+	// skipped entirely. It will try HALF_OPEN after the configured timeout, fail
+	// again (credentials unchanged), and reopen — effectively disabled until restart.
+	if pm.config.CircuitBreaker.Enabled {
+		if cs, exists := pm.circuitStates[providerName]; exists {
+			cs.State = "OPEN"
+			cs.LastStateChange = now
+		}
 	}
 }
 
