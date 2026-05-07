@@ -132,6 +132,13 @@ func containsAuthFailureIndicator(errMsg string) bool {
 		"invalid client",
 		"invalid credentials",
 		"access denied",
+		"not found in the allow list", // Bitrefcom-specific
+		"api key",                     // Generic API key errors
+		"invalid api key",
+		"missing api key",
+		"forbidden",
+		"HTTP 401",
+		"HTTP 403",
 	}
 	for _, indicator := range indicators {
 		if contains(errMsg, indicator) {

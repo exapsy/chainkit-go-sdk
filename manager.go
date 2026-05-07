@@ -326,7 +326,7 @@ func (pm *providerManager) attemptWithRetry(
 			return result, nil
 		}
 
-		pm.recordFailureWithError(providerCfg.Name, err, elapsed)
+		pm.recordFailureWithError(ctx, providerCfg.Name, err, elapsed)
 		lastErr = err
 	}
 
@@ -367,8 +367,18 @@ func (pm *providerManager) isProviderAvailable(providerName string, now time.Tim
 		if cs, exists := pm.circuitStates[providerName]; exists {
 			switch cs.State {
 			case "OPEN":
+				// Determine appropriate timeout based on failure type
+				timeout := pm.config.CircuitBreaker.Timeout
+
+				// Use extended timeout for providers with auth failures
+				if failure, exists := pm.failureTracker[providerName]; exists {
+					if failure.ConsecutiveAuthFailures >= authFailureCircuitThreshold {
+						timeout = authFailureCircuitTimeout
+					}
+				}
+
 				// Check if timeout has passed to try half-open
-				if now.Sub(cs.LastStateChange) >= pm.config.CircuitBreaker.Timeout {
+				if now.Sub(cs.LastStateChange) >= timeout {
 					cs.State = "HALF_OPEN"
 					cs.LastStateChange = now
 					cs.HalfOpenCalls = 0
@@ -635,12 +645,21 @@ func (pm *providerManager) GetScoringEngine() *scoring.Engine {
 // so we skip the provider faster than generic failures would trigger.
 const authFailureCircuitThreshold = 3
 
-// recordFailureWithError records a failure with error classification for scoring.
-// Unlike recordFailure, it emits only the classified event (not a generic EventOperationFailed
-// first), so a single operation failure produces exactly one scoring event.
+// authFailureCircuitTimeout is the extended timeout for providers with authentication
+// failures. Unlike transient errors, auth failures are permanent until credentials are
+// fixed, so we use a much longer timeout (10 minutes) to avoid spamming logs and APIs.
+const authFailureCircuitTimeout = 10 * time.Minute
+
+// recordFailureWithError records a provider failure with full error classification
+// and optional call-site metadata extracted from ctx (via [WithOperationMetadata]).
+//
+// ctx is the operation context — it may carry an [OperationMetadata] value that
+// enriches the resulting ScoreEvent (and the PenaltyRecord written to the history)
+// with address, network, touchpoint, and operation name. This is the single point
+// where context metadata enters the scoring pipeline.
 // When err wraps ErrAuthFailure, the provider's circuit breaker is opened after
 // authFailureCircuitThreshold consecutive auth failures.
-func (pm *providerManager) recordFailureWithError(providerName string, err error, responseTime time.Duration) {
+func (pm *providerManager) recordFailureWithError(ctx context.Context, providerName string, err error, responseTime time.Duration) {
 	now := time.Now()
 	pm.updateFailureState(providerName, now)
 
@@ -660,6 +679,22 @@ func (pm *providerManager) recordFailureWithError(providerName string, err error
 			event = scoring.ClassifyOperationEvent(providerName, responseTime, err)
 			event.Timestamp = now
 		}
+
+		// Enrich the event with call-site context when the caller attached
+		// OperationMetadata to the context via WithOperationMetadata.
+		if meta, ok := extractOperationMetadata(ctx); ok {
+			m := map[string]interface{}{
+				"operation":  meta.Operation,
+				"address":    meta.Address,
+				"network":    meta.Network,
+				"touchpoint": meta.Touchpoint,
+			}
+			for k, v := range meta.Extra {
+				m[k] = v
+			}
+			event.Metadata = m
+		}
+
 		pm.scoringEngine.RecordEvent(event)
 	}
 
@@ -686,12 +721,16 @@ func (pm *providerManager) handleAuthFailure(providerName string, now time.Time)
 	}
 
 	// Threshold reached: open the circuit breaker immediately so the provider is
-	// skipped entirely. It will try HALF_OPEN after the configured timeout, fail
-	// again (credentials unchanged), and reopen — effectively disabled until restart.
+	// skipped entirely. When the circuit reopens after timeout (10 minutes for auth
+	// failures vs 15 seconds for other errors), it will try HALF_OPEN, likely fail
+	// again (credentials unchanged), and reopen — effectively minimizing API spam
+	// until credentials are fixed or service is restarted.
 	if pm.config.CircuitBreaker.Enabled {
 		if cs, exists := pm.circuitStates[providerName]; exists {
 			cs.State = "OPEN"
 			cs.LastStateChange = now
+			// Note: The extended timeout (authFailureCircuitTimeout) is checked
+			// in isProviderAvailable() when ConsecutiveAuthFailures >= threshold
 		}
 	}
 }

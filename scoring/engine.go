@@ -3,6 +3,7 @@ package scoring
 import (
 	"context"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -190,44 +191,48 @@ func (e *Engine) RecordEvent(event ScoreEvent) {
 		ts = time.Now()
 	}
 
+	// Metadata is only meaningful for operation events — health checks and
+	// latency comparisons are not tied to a specific address.
+	meta := stringifyMetadata(event.Metadata)
+
 	switch event.Type {
 	case EventHealthCheckFailed:
 		const reason = "health check failed"
-		score.AddHealthPenalty(e.config.HealthCheckFailPenalty, e.config.MaxPenalty, reason)
-		e.persistPenalty(event.Provider, PenaltyCategoryHealth, reason, e.config.HealthCheckFailPenalty, ts)
+		score.AddHealthPenalty(e.config.HealthCheckFailPenalty, e.config.MaxPenalty, reason, nil)
+		e.persistPenalty(event.Provider, PenaltyCategoryHealth, reason, e.config.HealthCheckFailPenalty, ts, nil)
 
 	case EventHealthCheck429:
 		const reason = "rate limit during health check (HTTP 429)"
-		score.AddRateLimitPenalty(e.config.RateLimitPenalty, e.config.MaxPenalty, reason)
-		e.persistPenalty(event.Provider, PenaltyCategoryRateLimit, reason, e.config.RateLimitPenalty, ts)
+		score.AddRateLimitPenalty(e.config.RateLimitPenalty, e.config.MaxPenalty, reason, nil)
+		e.persistPenalty(event.Provider, PenaltyCategoryRateLimit, reason, e.config.RateLimitPenalty, ts, nil)
 
 	case EventHealthCheckAuthFail:
 		const reason = "authentication failure (HTTP 401/403)"
-		score.AddHealthPenalty(e.config.AuthFailurePenalty, e.config.MaxPenalty, reason)
-		e.persistPenalty(event.Provider, PenaltyCategoryHealth, reason, e.config.AuthFailurePenalty, ts)
+		score.AddHealthPenalty(e.config.AuthFailurePenalty, e.config.MaxPenalty, reason, nil)
+		e.persistPenalty(event.Provider, PenaltyCategoryHealth, reason, e.config.AuthFailurePenalty, ts, nil)
 
 	case EventOperationAuthFail:
 		const reason = "operation authentication failure"
-		score.AddHealthPenalty(e.config.AuthFailurePenalty, e.config.MaxPenalty, reason)
-		e.persistPenalty(event.Provider, PenaltyCategoryHealth, reason, e.config.AuthFailurePenalty, ts)
+		score.AddHealthPenalty(e.config.AuthFailurePenalty, e.config.MaxPenalty, reason, meta)
+		e.persistPenalty(event.Provider, PenaltyCategoryHealth, reason, e.config.AuthFailurePenalty, ts, meta)
 
 	case EventHealthCheckTimeout:
 		const reason = "health check timed out"
-		score.AddHealthPenalty(e.config.TimeoutPenalty, e.config.MaxPenalty, reason)
-		e.persistPenalty(event.Provider, PenaltyCategoryHealth, reason, e.config.TimeoutPenalty, ts)
+		score.AddHealthPenalty(e.config.TimeoutPenalty, e.config.MaxPenalty, reason, nil)
+		e.persistPenalty(event.Provider, PenaltyCategoryHealth, reason, e.config.TimeoutPenalty, ts, nil)
 
 	case EventOperationFailed:
 		reason := "operation failed"
 		if event.Error != nil {
 			reason = event.Error.Error()
 		}
-		score.AddErrorPenalty(e.config.OperationFailPenalty, e.config.MaxPenalty, reason)
-		e.persistPenalty(event.Provider, PenaltyCategoryError, reason, e.config.OperationFailPenalty, ts)
+		score.AddErrorPenalty(e.config.OperationFailPenalty, e.config.MaxPenalty, reason, meta)
+		e.persistPenalty(event.Provider, PenaltyCategoryError, reason, e.config.OperationFailPenalty, ts, meta)
 
 	case EventRateLimited:
 		const reason = "rate limited (HTTP 429)"
-		score.AddRateLimitPenalty(e.config.RateLimitPenalty, e.config.MaxPenalty, reason)
-		e.persistPenalty(event.Provider, PenaltyCategoryRateLimit, reason, e.config.RateLimitPenalty, ts)
+		score.AddRateLimitPenalty(e.config.RateLimitPenalty, e.config.MaxPenalty, reason, meta)
+		e.persistPenalty(event.Provider, PenaltyCategoryRateLimit, reason, e.config.RateLimitPenalty, ts, meta)
 
 	case EventOperationSuccess:
 		score.RecordSuccess(e.config.SuccessBonus)
@@ -294,13 +299,14 @@ func (e *Engine) updateLatencyPenalty(providerName string) {
 	// Persist the latency penalty event if one was applied
 	if slownessFactor > 0 && reason != "" {
 		penalty := slownessFactor * e.config.SlowResponsePenalty
-		e.persistPenalty(providerName, PenaltyCategoryLatency, reason, penalty, time.Now())
+		e.persistPenalty(providerName, PenaltyCategoryLatency, reason, penalty, time.Now(), nil)
 	}
 }
 
 // persistPenalty appends a penalty record to the persistent store in a background goroutine.
 // It is a no-op when no PenaltyHistoryStore is configured.
-func (e *Engine) persistPenalty(provider string, cat PenaltyCategory, reason string, amount float64, ts time.Time) {
+// metadata is optional; pass nil when no call-site context is available.
+func (e *Engine) persistPenalty(provider string, cat PenaltyCategory, reason string, amount float64, ts time.Time, metadata map[string]string) {
 	if e.penaltyHistoryStore == nil {
 		return
 	}
@@ -310,6 +316,7 @@ func (e *Engine) persistPenalty(provider string, cat PenaltyCategory, reason str
 		Reason:       reason,
 		Amount:       amount,
 		CreatedAt:    ts,
+		Metadata:     metadata,
 	}
 	go func() {
 		_ = e.penaltyHistoryStore.Append(context.Background(), record)
@@ -338,14 +345,115 @@ func (e *Engine) warmPenaltyHistory(ctx context.Context) {
 				Category:  PenaltyCategory(r.Category),
 				Reason:    r.Reason,
 				Amount:    r.Amount,
+				Metadata:  r.Metadata,
 			})
 		}
 		score.mu.Unlock()
 	}
 }
 
-// GetEffectiveScore returns the current effective score for a provider
-// Higher score = better provider
+// GetPenaltyHistory returns penalty records for a named provider, most-recent first.
+// Returns (nil, false) when the provider is not registered.
+//
+// Filters (zero values = no filter):
+//   - limit:    max records to return; ≤0 defaults to 50, capped at 200
+//   - since:    exclude records older than this time
+//   - category: restrict to one penalty category; empty = all categories
+func (e *Engine) GetPenaltyHistory(
+	name string,
+	limit int,
+	since time.Time,
+	category PenaltyCategory,
+) ([]PenaltyRecord, bool) {
+	const defaultLimit = 50
+	const maxLimit = 200
+
+	if limit <= 0 {
+		limit = defaultLimit
+	}
+	if limit > maxLimit {
+		limit = maxLimit
+	}
+
+	e.mu.RLock()
+	score, exists := e.scores[name]
+	e.mu.RUnlock()
+
+	if !exists {
+		return nil, false
+	}
+
+	// snapshot() returns records oldest-first; we reverse to most-recent-first.
+	score.mu.RLock()
+	all := score.history.snapshot()
+	score.mu.RUnlock()
+
+	// Reverse in place.
+	for i, j := 0, len(all)-1; i < j; i, j = i+1, j-1 {
+		all[i], all[j] = all[j], all[i]
+	}
+
+	out := make([]PenaltyRecord, 0, limit)
+	for _, r := range all {
+		if len(out) >= limit {
+			break
+		}
+		if !since.IsZero() && r.Timestamp.Before(since) {
+			continue
+		}
+		if category != "" && r.Category != category {
+			continue
+		}
+		r.DecayFactor = computeDecayFactor(r.Timestamp, e.config.DecayRate, e.config.DecayInterval)
+		out = append(out, r)
+	}
+
+	return out, true
+}
+
+// stringifyMetadata converts the event's map[string]interface{} metadata to the
+// map[string]string form stored in PenaltyRecord, using fmt.Sprintf for conversion.
+// Returns nil when m is empty so that PenaltyRecord.Metadata is omitted from JSON.
+func stringifyMetadata(m map[string]interface{}) map[string]string {
+	if len(m) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(m))
+	for k, v := range m {
+		out[k] = fmt.Sprintf("%v", v)
+	}
+	return out
+}
+
+// computeDecayFactor returns the fraction of an original penalty still active
+// at query time, given the timestamp at which it was recorded and the engine's
+// decay parameters.
+//
+//   - Returns 1.0 for a record timestamped right now (no decay applied yet).
+//   - Returns 0.0 (clamped) if the record is older than the window where
+//     math.Pow would underflow.
+//   - Safe when decayInterval is zero (returns 1.0 to avoid division by zero).
+func computeDecayFactor(ts time.Time, decayRate float64, decayInterval time.Duration) float64 {
+	if decayInterval <= 0 || decayRate <= 0 {
+		return 1.0
+	}
+	elapsed := time.Since(ts)
+	if elapsed <= 0 {
+		return 1.0
+	}
+	intervals := elapsed.Seconds() / decayInterval.Seconds()
+	f := math.Pow(1.0-decayRate, intervals)
+	if f < 0 {
+		f = 0
+	}
+	if f > 1 {
+		f = 1
+	}
+	return f
+}
+
+// GetEffectiveScore returns the current effective score for a provider.
+// Higher score = better provider.
 func (e *Engine) GetEffectiveScore(providerName string) float64 {
 	e.mu.RLock()
 	defer e.mu.RUnlock()

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -83,7 +84,8 @@ func (p *PostgresPenaltyStore) tableName() string {
 	return p.tablePrefix + "penalty_history"
 }
 
-// init creates the penalty history table and index if they do not exist.
+// init creates the penalty history table and indexes if they do not exist,
+// and adds the metadata column to existing deployments via ADD COLUMN IF NOT EXISTS.
 func (p *PostgresPenaltyStore) init(ctx context.Context) error {
 	table := p.tableName()
 	indexName := "idx_" + table + "_provider_time"
@@ -98,7 +100,8 @@ func (p *PostgresPenaltyStore) init(ctx context.Context) error {
 			created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 		);
 		CREATE INDEX IF NOT EXISTS %s ON %s (provider_name, created_at DESC);
-	`, table, indexName, table))
+		ALTER TABLE %s ADD COLUMN IF NOT EXISTS metadata TEXT;
+	`, table, indexName, table, table))
 	return err
 }
 
@@ -113,15 +116,25 @@ func (p *PostgresPenaltyStore) Append(ctx context.Context, record *PenaltyRecord
 		createdAt = time.Now()
 	}
 
+	var metadataJSON *string
+	if len(record.Metadata) > 0 {
+		b, err := json.Marshal(record.Metadata)
+		if err == nil {
+			s := string(b)
+			metadataJSON = &s
+		}
+	}
+
 	_, err := p.pool.Exec(ctx, fmt.Sprintf(`
-		INSERT INTO %s (provider_name, category, reason, amount, created_at)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO %s (provider_name, category, reason, amount, created_at, metadata)
+		VALUES ($1, $2, $3, $4, $5, $6)
 	`, p.tableName()),
 		record.ProviderName,
 		record.Category,
 		record.Reason,
 		record.Amount,
 		createdAt,
+		metadataJSON,
 	)
 	if err != nil {
 		return fmt.Errorf("postgres penalty store: insert: %w", err)
@@ -136,7 +149,7 @@ func (p *PostgresPenaltyStore) GetRecent(ctx context.Context, providerName strin
 	}
 
 	rows, err := p.pool.Query(ctx, fmt.Sprintf(`
-		SELECT provider_name, category, reason, amount, created_at
+		SELECT provider_name, category, reason, amount, created_at, metadata
 		FROM %s
 		WHERE provider_name = $1
 		ORDER BY created_at DESC
@@ -151,8 +164,12 @@ func (p *PostgresPenaltyStore) GetRecent(ctx context.Context, providerName strin
 	var buf []*PenaltyRecordData
 	for rows.Next() {
 		r := &PenaltyRecordData{}
-		if err := rows.Scan(&r.ProviderName, &r.Category, &r.Reason, &r.Amount, &r.CreatedAt); err != nil {
+		var metadataJSON *string
+		if err := rows.Scan(&r.ProviderName, &r.Category, &r.Reason, &r.Amount, &r.CreatedAt, &metadataJSON); err != nil {
 			return nil, fmt.Errorf("postgres penalty store: scan: %w", err)
+		}
+		if metadataJSON != nil && *metadataJSON != "" {
+			_ = json.Unmarshal([]byte(*metadataJSON), &r.Metadata)
 		}
 		buf = append(buf, r)
 	}

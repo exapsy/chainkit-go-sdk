@@ -10,6 +10,11 @@ type ProviderScore struct {
 	// Name of the provider
 	Name string
 
+	// Priority is the static configuration priority (1 = highest preference).
+	// It determines the base score: priority 1 → 100, 2 → 90, 3 → 80, etc.
+	// Stored here so callers can explain the base score without reverse-engineering it.
+	Priority int
+
 	// BaseScore derived from initial priority (inverted: priority 1 → score 100, priority 2 → 90, etc.)
 	BaseScore float64
 
@@ -50,6 +55,7 @@ func NewProviderScore(name string, priority int, latencyWindowSize int, historyS
 
 	return &ProviderScore{
 		Name:              name,
+		Priority:          priority,
 		BaseScore:         baseScore,
 		HealthPenalty:     0,
 		LatencyPenalty:    0,
@@ -84,7 +90,9 @@ func (ps *ProviderScore) EffectiveScore() float64 {
 
 // AddHealthPenalty adds a penalty for health check failures.
 // reason is a human-readable explanation recorded in the penalty history.
-func (ps *ProviderScore) AddHealthPenalty(penalty float64, maxPenalty float64, reason string) {
+// metadata carries optional call-site context (address, network, touchpoint);
+// pass nil when no context is available.
+func (ps *ProviderScore) AddHealthPenalty(penalty float64, maxPenalty float64, reason string, metadata map[string]string) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 
@@ -100,12 +108,14 @@ func (ps *ProviderScore) AddHealthPenalty(penalty float64, maxPenalty float64, r
 		Category:  PenaltyCategoryHealth,
 		Reason:    reason,
 		Amount:    penalty,
+		Metadata:  metadata,
 	})
 }
 
 // AddRateLimitPenalty adds a penalty for rate limiting.
 // reason is a human-readable explanation recorded in the penalty history.
-func (ps *ProviderScore) AddRateLimitPenalty(penalty float64, maxPenalty float64, reason string) {
+// metadata carries optional call-site context; pass nil when not available.
+func (ps *ProviderScore) AddRateLimitPenalty(penalty float64, maxPenalty float64, reason string, metadata map[string]string) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 
@@ -120,12 +130,14 @@ func (ps *ProviderScore) AddRateLimitPenalty(penalty float64, maxPenalty float64
 		Category:  PenaltyCategoryRateLimit,
 		Reason:    reason,
 		Amount:    penalty,
+		Metadata:  metadata,
 	})
 }
 
 // AddErrorPenalty adds a penalty for operation failures.
 // reason is a human-readable explanation recorded in the penalty history.
-func (ps *ProviderScore) AddErrorPenalty(penalty float64, maxPenalty float64, reason string) {
+// metadata carries optional call-site context; pass nil when not available.
+func (ps *ProviderScore) AddErrorPenalty(penalty float64, maxPenalty float64, reason string, metadata map[string]string) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 
@@ -143,6 +155,7 @@ func (ps *ProviderScore) AddErrorPenalty(penalty float64, maxPenalty float64, re
 		Category:  PenaltyCategoryError,
 		Reason:    reason,
 		Amount:    penalty,
+		Metadata:  metadata,
 	})
 }
 
@@ -263,6 +276,7 @@ func (ps *ProviderScore) GetStats() ProviderScoreStats {
 
 	return ProviderScoreStats{
 		Name:             ps.Name,
+		Priority:         ps.Priority,
 		BaseScore:        ps.BaseScore,
 		EffectiveScore:   ps.BaseScore - ps.HealthPenalty - ps.LatencyPenalty - ps.ErrorPenalty - ps.RateLimitPenalty,
 		HealthPenalty:    ps.HealthPenalty,
@@ -296,6 +310,7 @@ func (ps *ProviderScore) getAverageLatencyUnsafe() time.Duration {
 // ProviderScoreStats represents a snapshot of provider score statistics
 type ProviderScoreStats struct {
 	Name             string
+	Priority         int
 	BaseScore        float64
 	EffectiveScore   float64
 	HealthPenalty    float64

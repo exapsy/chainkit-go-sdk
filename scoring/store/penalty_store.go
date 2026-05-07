@@ -6,12 +6,17 @@ import (
 )
 
 // PenaltyRecordData is the serializable form of a penalty event.
+// Metadata carries optional call-site context (address, network, touchpoint,
+// operation). Redis serialises it as part of the JSON document automatically.
+// The Postgres store stores it as a JSON text column (added with
+// ADD COLUMN IF NOT EXISTS so existing deployments are not affected).
 type PenaltyRecordData struct {
-	ProviderName string    `json:"provider_name"`
-	Category     string    `json:"category"`
-	Reason       string    `json:"reason"`
-	Amount       float64   `json:"amount"`
-	CreatedAt    time.Time `json:"created_at"`
+	ProviderName string            `json:"provider_name"`
+	Category     string            `json:"category"`
+	Reason       string            `json:"reason"`
+	Amount       float64           `json:"amount"`
+	CreatedAt    time.Time         `json:"created_at"`
+	Metadata     map[string]string `json:"metadata,omitempty"`
 }
 
 // PenaltyHistoryStore persists penalty events per provider.

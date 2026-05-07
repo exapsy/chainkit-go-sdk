@@ -81,6 +81,10 @@ func (s *coingecko) GetExchangeRates(
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
+		// Detect authentication/authorization failures and wrap with ErrAuthFailure.
+		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+			return nil, fmt.Errorf("HTTP %d: %s: %w", resp.StatusCode, string(body), chainkit.ErrAuthFailure)
+		}
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -152,6 +156,10 @@ func (s *coingecko) GetExchangeRate(
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
+		// Detect authentication/authorization failures and wrap with ErrAuthFailure.
+		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+			return nil, fmt.Errorf("HTTP %d: %s: %w", resp.StatusCode, string(body), chainkit.ErrAuthFailure)
+		}
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -313,7 +321,7 @@ func (s *coingecko) ValidateAPIKey(ctx context.Context) error {
 		s.authMu.Lock()
 		authFalse := false
 		s.authValid = &authFalse
-		s.authErr = fmt.Errorf("invalid API key (HTTP %d)", resp.StatusCode)
+		s.authErr = fmt.Errorf("invalid API key (HTTP %d): %w", resp.StatusCode, chainkit.ErrAuthFailure)
 		s.authMu.Unlock()
 		return s.authErr
 	}

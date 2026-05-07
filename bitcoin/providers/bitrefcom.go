@@ -95,6 +95,11 @@ func (b *Bitrefcom) callAPI(
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
+		// Detect authentication/authorization failures and wrap with ErrAuthFailure
+		// so the provider manager can apply heavy penalties and circuit-break faster.
+		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+			return nil, fmt.Errorf("HTTP %d: %s: %w", resp.StatusCode, string(respBody), chainkit.ErrAuthFailure)
+		}
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
 	}
 

@@ -103,6 +103,10 @@ func (t *tatumProvider) call(ctx context.Context, method string, params interfac
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		// Detect authentication/authorization failures and wrap with ErrAuthFailure.
+		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+			return nil, fmt.Errorf("HTTP %d: %s: %w", resp.StatusCode, string(respBody), chainkit.ErrAuthFailure)
+		}
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
 	}
 
@@ -289,7 +293,7 @@ func (t *tatumProvider) ValidateAPIKey(ctx context.Context) error {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		authErr := fmt.Errorf("invalid API key or credentials (HTTP %d)", resp.StatusCode)
+		authErr := fmt.Errorf("invalid API key or credentials (HTTP %d): %w", resp.StatusCode, chainkit.ErrAuthFailure)
 		t.setAuthState(false, authErr)
 		return authErr
 	}

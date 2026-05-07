@@ -13,11 +13,21 @@ const (
 )
 
 // PenaltyRecord is a single penalty event with a human-readable reason.
+// Metadata carries optional call-site context (address, network, touchpoint,
+// operation) populated when the caller attached an [OperationMetadata] to the
+// request context. It is omitted from JSON when empty.
+//
+// DecayFactor is the fraction of the original penalty still in effect at the
+// time the record was retrieved (1.0 = fresh, 0.0 = fully decayed). It is
+// computed by [Engine.GetPenaltyHistory] using the engine's DecayRate and
+// DecayInterval; it is never persisted.
 type PenaltyRecord struct {
-	Timestamp time.Time       `json:"timestamp"`
-	Category  PenaltyCategory `json:"category"`
-	Reason    string          `json:"reason"`
-	Amount    float64         `json:"amount"`
+	Timestamp   time.Time         `json:"timestamp"`
+	Category    PenaltyCategory   `json:"category"`
+	Reason      string            `json:"reason"`
+	Amount      float64           `json:"amount"`
+	Metadata    map[string]string `json:"metadata,omitempty"`
+	DecayFactor float64           `json:"decay_factor"` // 0.0–1.0; populated at query time
 }
 
 const defaultPenaltyHistorySize = 50
