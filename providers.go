@@ -30,6 +30,12 @@ func (m *MixedProviders) Name() string {
 }
 
 // executeWithFallbackAndMetrics runs fn through the provider chain with fallback and metrics.
+//
+// The metrics recorder is invoked exactly once per call. When the recorder satisfies
+// RichMetricsRecorder, the rich variant is called with a structured RequestEvent;
+// otherwise the simple RecordBlockchainRequest is called. This keeps existing
+// MetricsRecorder implementations working unchanged while letting newer recorders
+// receive attempt count and classified error.
 func executeWithFallbackAndMetrics[ResultT any](
 	ctx context.Context,
 	manager *providerManager,
@@ -39,8 +45,21 @@ func executeWithFallbackAndMetrics[ResultT any](
 ) (ResultT, error) {
 	var zero ResultT
 
-	result, providerName, duration, err := manager.runOp(ctx, func(ctx context.Context, provider interface{}) (interface{}, error) { return fn(provider) })
-	metricsRecorder.RecordBlockchainRequest(ctx, providerName, operation, err == nil, duration)
+	result, providerName, duration, attempts, err := manager.runOp(ctx, func(ctx context.Context, provider interface{}) (interface{}, error) { return fn(provider) })
+
+	if rich, ok := metricsRecorder.(RichMetricsRecorder); ok {
+		rich.RecordBlockchainRequestRich(ctx, RequestEvent{
+			Provider:     providerName,
+			Operation:    operation,
+			Success:      err == nil,
+			Duration:     duration,
+			AttemptCount: attempts,
+			ErrorClass:   classifyError(err),
+		})
+	} else {
+		metricsRecorder.RecordBlockchainRequest(ctx, providerName, operation, err == nil, duration)
+	}
+
 	if err != nil {
 		return zero, err
 	}
