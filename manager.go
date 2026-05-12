@@ -242,13 +242,26 @@ func (pm *providerManager) getAvailableProviders() []providerConfig {
 	return available
 }
 
-func (pm *providerManager) runOp(ctx context.Context, op func(ctx context.Context, provider interface{}) (interface{}, error)) (data interface{}, providerName string, duration time.Duration, err error) {
+// runOp runs op against the available provider chain with fallback and retry.
+//
+// Returns:
+//   - data: the successful provider's result (nil on failure).
+//   - providerName: the name of the provider that succeeded (empty on failure).
+//   - duration: total wall-clock from runOp entry to return — includes time spent on
+//     failed providers and retry backoff. This is the user-perceived operation latency.
+//   - attempts: total attempts across all tried providers. A successful first call
+//     reports 1; a successful call after one provider failed and the next retried twice
+//     before succeeding reports 4.
+//   - err: nil on success, wrapped lastErr on full chain failure.
+func (pm *providerManager) runOp(ctx context.Context, op func(ctx context.Context, provider interface{}) (interface{}, error)) (data interface{}, providerName string, duration time.Duration, attempts int, err error) {
+	start := time.Now()
 	var lastErr error
+	totalAttempts := 0
 
 	// getAvailableProviders already filters out circuit-open / rate-limited providers.
 	providers := pm.getAvailableProviders()
 	if len(providers) == 0 {
-		return nil, "", 0, fmt.Errorf("%w: no available providers", ErrProviderNotConfigured)
+		return nil, "", time.Since(start), 0, fmt.Errorf("%w: no available providers", ErrProviderNotConfigured)
 	}
 
 	// Narrow to a single provider if one is pinned — either via context or via
@@ -258,7 +271,7 @@ func (pm *providerManager) runOp(ctx context.Context, op func(ctx context.Contex
 		// Context-pinned provider: find it inside the available list.
 		pinned, ok := findProviderByName(providers, name)
 		if !ok {
-			return nil, "", 0, fmt.Errorf("context-specified provider %s is not available", name)
+			return nil, "", time.Since(start), 0, fmt.Errorf("context-specified provider %s is not available", name)
 		}
 		providers = []providerConfig{pinned}
 	} else {
@@ -269,7 +282,7 @@ func (pm *providerManager) runOp(ctx context.Context, op func(ctx context.Contex
 		if sel != "" {
 			pinned, ok := findProviderByName(providers, sel)
 			if !ok {
-				return nil, "", 0, fmt.Errorf("selected provider %s is not available", sel)
+				return nil, "", time.Since(start), 0, fmt.Errorf("selected provider %s is not available", sel)
 			}
 			providers = []providerConfig{pinned}
 		}
@@ -278,42 +291,47 @@ func (pm *providerManager) runOp(ctx context.Context, op func(ctx context.Contex
 	retry := pm.config.RetryPolicy
 
 	for _, providerCfg := range providers {
-		result, opErr := pm.attemptWithRetry(ctx, providerCfg, op, retry)
+		result, perProviderAttempts, opErr := pm.attemptWithRetry(ctx, providerCfg, op, retry)
+		totalAttempts += perProviderAttempts
 		if opErr == nil {
 			if pm.selector != nil {
 				pm.selector.RecordAttempt(providerCfg.Name, providerCfg.Priority)
 			}
-			// duration is captured inside attemptWithRetry; surface the total wall time.
-			return result, providerCfg.Name, 0, nil
+			return result, providerCfg.Name, time.Since(start), totalAttempts, nil
 		}
 
 		recordFailedProvider(ctx, providerCfg.Name)
 		lastErr = opErr
 	}
 
-	return nil, "", 0, fmt.Errorf("all providers failed, last error: %w", lastErr)
+	return nil, "", time.Since(start), totalAttempts, fmt.Errorf("all providers failed, last error: %w", lastErr)
 }
 
 // attemptWithRetry runs op against a single provider, retrying according to
 // policy. It records success/failure on the providerManager after each attempt.
+//
+// Returns the number of attempts actually made (1-based). A context cancellation
+// during backoff counts the in-flight attempt that hasn't yet run as not-attempted,
+// so attempts == the count actually dispatched to the provider.
 func (pm *providerManager) attemptWithRetry(
 	ctx context.Context,
 	providerCfg providerConfig,
 	op func(ctx context.Context, provider interface{}) (interface{}, error),
 	policy RetryPolicy,
-) (interface{}, error) {
+) (interface{}, int, error) {
 	maxAttempts := 1
 	if policy.Enabled && policy.MaxAttempts > 1 {
 		maxAttempts = policy.MaxAttempts
 	}
 
 	var lastErr error
+	attempts := 0
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		if attempt > 0 {
 			delay := pm.retryDelay(policy, attempt)
 			select {
 			case <-ctx.Done():
-				return nil, ctx.Err()
+				return nil, attempts, ctx.Err()
 			case <-time.After(delay):
 			}
 		}
@@ -321,16 +339,17 @@ func (pm *providerManager) attemptWithRetry(
 		start := time.Now()
 		result, err := op(ctx, providerCfg.Provider)
 		elapsed := time.Since(start)
+		attempts++
 		if err == nil {
 			pm.recordSuccessWithLatency(providerCfg.Name, elapsed)
-			return result, nil
+			return result, attempts, nil
 		}
 
 		pm.recordFailureWithError(ctx, providerCfg.Name, err, elapsed)
 		lastErr = err
 	}
 
-	return nil, lastErr
+	return nil, attempts, lastErr
 }
 
 // retryDelay computes the exponential-backoff delay for the given attempt number
