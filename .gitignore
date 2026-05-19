@@ -1,0 +1,20 @@
+# Go build artefacts
+*.test
+*.out
+*.exe
+coverage.*
+
+# Local secrets — ignore every .env variant; allow tracked templates.
+.env
+.env.*
+!.env.example
+
+# Editor / OS / agent harness
+.idea/
+.vscode/
+.DS_Store
+.claude/
+
+# tmp / logs
+/tmp/
+/logs/
