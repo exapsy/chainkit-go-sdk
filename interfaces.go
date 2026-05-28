@@ -160,6 +160,20 @@ type RateFetcher interface {
 	GetExchangeRates(ctx context.Context, coin types.CoinTicker) ([]types.CoinRate, error)
 }
 
+// HistoricalRateFetcher fetches a series of historical fiat exchange rates
+// for a cryptocurrency over a time window. Implementations choose a
+// sensible resolution based on the requested window (e.g. 5-minute
+// candles for short windows, hourly or daily for longer windows) and
+// document the resolution in their package docs.
+//
+// Returned points are ordered chronologically (oldest first). The
+// Currency and Coin fields on each point match the caller's request;
+// Source is set to the implementing provider's name so a mixed-chain
+// response stays attributable.
+type HistoricalRateFetcher interface {
+	GetHistoricalRates(ctx context.Context, coin types.CoinTicker, currency types.Currency, since, until time.Time) ([]types.CoinRate, error)
+}
+
 // ProviderCapability is a string tag describing a single capability a provider implements.
 type ProviderCapability string
 

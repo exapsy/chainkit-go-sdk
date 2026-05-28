@@ -138,6 +138,7 @@ func (m *MixedProviders) managers() map[ProviderChainType]*providerManager {
 		ProviderChainTxStatusFetchers:  m.txStatusFetchers,
 		ProviderChainBalanceFetchers:   m.balanceFetchers,
 		ProviderChainRateFetchers:      m.rateFetchers,
+		ProviderChainHistoricalRateFetchers: m.historicalRateFetchers,
 	}
 }
 

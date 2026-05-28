@@ -17,6 +17,7 @@ const (
 	ProviderChainTxStatusFetchers  ProviderChainType = "TxStatusFetchers"
 	ProviderChainBalanceFetchers   ProviderChainType = "BalanceFetchers"
 	ProviderChainRateFetchers      ProviderChainType = "RateFetchers"
+	ProviderChainHistoricalRateFetchers ProviderChainType = "HistoricalRateFetchers"
 )
 
 // String returns the string representation of the provider chain type

@@ -2,6 +2,7 @@ package chainkit
 
 import (
 	"context"
+	"time"
 
 	"github.com/exapsy/chainkit/bitcoin/types"
 	"github.com/exapsy/chainkit/scoring"
@@ -21,6 +22,7 @@ type MixedProviders struct {
 	txStatusFetchers  *providerManager
 	balanceFetchers   *providerManager
 	rateFetchers      *providerManager
+	historicalRateFetchers *providerManager
 	metricsRecorder   MetricsRecorder
 	scoringEngine     *scoring.Engine
 }
@@ -166,6 +168,12 @@ func (m *MixedProviders) GetExchangeRate(ctx context.Context, coin types.CoinTic
 func (m *MixedProviders) GetExchangeRates(ctx context.Context, coin types.CoinTicker) ([]types.CoinRate, error) {
 	return executeWithFallbackAndMetrics(ctx, m.rateFetchers, m.metricsRecorder, "GetExchangeRates", func(provider interface{}) ([]types.CoinRate, error) {
 		return provider.(RateFetcher).GetExchangeRates(ctx, coin)
+	})
+}
+
+func (m *MixedProviders) GetHistoricalRates(ctx context.Context, coin types.CoinTicker, currency types.Currency, since, until time.Time) ([]types.CoinRate, error) {
+	return executeWithFallbackAndMetrics(ctx, m.historicalRateFetchers, m.metricsRecorder, "GetHistoricalRates", func(provider interface{}) ([]types.CoinRate, error) {
+		return provider.(HistoricalRateFetcher).GetHistoricalRates(ctx, coin, currency, since, until)
 	})
 }
 

@@ -21,6 +21,7 @@ type MixedProvidersBuilder struct {
 	txStatusFetchers  *providerManager
 	balanceFetchers   *providerManager
 	rateFetchers      *providerManager
+	historicalRateFetchers *providerManager
 
 	chainConfigs    map[string]ChainConfig
 	metricsRecorder MetricsRecorder
@@ -42,6 +43,7 @@ func NewMixedProvidersBuilder() *MixedProvidersBuilder {
 		txStatusFetchers:  newProviderManager(DefaultChainConfig(ProviderChainTxStatusFetchers)),
 		balanceFetchers:   newProviderManager(DefaultChainConfig(ProviderChainBalanceFetchers)),
 		rateFetchers:      newProviderManager(DefaultChainConfig(ProviderChainRateFetchers)),
+		historicalRateFetchers: newProviderManager(DefaultChainConfig(ProviderChainHistoricalRateFetchers)),
 		chainConfigs:      make(map[string]ChainConfig),
 		metricsRecorder:   &NoOpMetricsRecorder{}, // Default to no-op metrics
 	}
@@ -78,6 +80,8 @@ func (b *MixedProvidersBuilder) WithChainConfig(chainType ProviderChainType, con
 		b.balanceFetchers.updateChainConfig(config)
 	case ProviderChainRateFetchers:
 		b.rateFetchers.updateChainConfig(config)
+	case ProviderChainHistoricalRateFetchers:
+		b.historicalRateFetchers.updateChainConfig(config)
 	}
 
 	return b
@@ -173,6 +177,36 @@ func (b *MixedProvidersBuilder) WithRateFetcherChain(fetchers ...RateFetcherConf
 		}
 
 		b.rateFetchers.addProvider(fetcher.Fetcher, fetcher.Priority, name)
+	}
+	return b
+}
+
+// WithHistoricalRateFetcherChain registers one or more providers as the
+// historical-rate fetcher chain. Mirrors WithRateFetcherChain — same
+// priority + ChainConfig semantics. The chain serves the
+// HistoricalRateFetcher capability (multi-point time-series price data).
+func (b *MixedProvidersBuilder) WithHistoricalRateFetcherChain(fetchers ...HistoricalRateFetcherConfig) *MixedProvidersBuilder {
+	chainConfigApplied := false
+	for _, fetcher := range fetchers {
+		if fetcher.Fetcher == nil {
+			continue
+		}
+
+		name := fetcher.Name
+		if name == "" {
+			if named, ok := fetcher.Fetcher.(BlockchainBaseProvider); ok {
+				name = named.Name()
+			} else {
+				name = "unknown"
+			}
+		}
+
+		if fetcher.ChainConfig != nil && !chainConfigApplied {
+			b.historicalRateFetchers.updateChainConfig(*fetcher.ChainConfig)
+			chainConfigApplied = true
+		}
+
+		b.historicalRateFetchers.addProvider(fetcher.Fetcher, fetcher.Priority, name)
 	}
 	return b
 }
@@ -464,6 +498,7 @@ func (b *MixedProvidersBuilder) Build() BlockchainProvider {
 			b.utxoFetchers,
 			b.balanceFetchers,
 			b.rateFetchers,
+			b.historicalRateFetchers,
 		}
 
 		for _, manager := range managers {
@@ -490,6 +525,7 @@ func (b *MixedProvidersBuilder) Build() BlockchainProvider {
 		utxoFetchers:      b.utxoFetchers,
 		balanceFetchers:   b.balanceFetchers,
 		rateFetchers:      b.rateFetchers,
+		historicalRateFetchers: b.historicalRateFetchers,
 		metricsRecorder:   b.metricsRecorder,
 		scoringEngine:     b.scoringEngine,
 	}

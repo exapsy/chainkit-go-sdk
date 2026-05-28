@@ -111,6 +111,13 @@ type RateFetcherConfig struct {
 	ChainConfig *ChainConfig // Optional - if provided, will be applied to the chain
 }
 
+type HistoricalRateFetcherConfig struct {
+	Fetcher     HistoricalRateFetcher
+	Priority    int
+	Name        string       // Optional - if empty, will be derived from Fetcher.Name()
+	ChainConfig *ChainConfig // Optional - if provided, will be applied to the chain
+}
+
 type AddressGeneratorConfig struct {
 	Generator   AddressGenerator
 	Priority    int

@@ -72,8 +72,25 @@ func (p *blockcypher) GetUTXOs(ctx context.Context, address string) ([]types.UTX
 		return nil, fmt.Errorf("fetch address %s: %w", address, err)
 	}
 
+	// Blockcypher's TXRef is a union: each row represents EITHER an
+	// input OR an output of a transaction touching this address. Rows
+	// describing an input have TXOutputN = -1 and TXInputN >= 0; rows
+	// describing an output flip those. Even with `unspent=true`, the
+	// API returns both directions for some addresses (taproot in
+	// particular, where heavy ordinal/rune activity produces lots of
+	// inscription-driven traffic).
+	//
+	// Filter for actual output refs only — Spent=false (still
+	// unspent) + TXOutputN >= 0 (it IS an output, not an input). Both
+	// guards together prevent the int(-1) → uint32(4294967295)
+	// disaster that otherwise surfaces phantom "UTXOs" at the same
+	// (tx_hash, MAX_UINT32) coordinate, breaking any keyed
+	// downstream consumer.
 	utxos := make([]types.UTXO, 0, len(addr.TXRefs))
 	for _, txRef := range addr.TXRefs {
+		if txRef.Spent || txRef.TXOutputN < 0 {
+			continue
+		}
 		scriptBytes, _ := hex.DecodeString(txRef.Script)
 		utxos = append(utxos, types.UTXO{
 			TxHash:        txRef.TXHash,

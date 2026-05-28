@@ -22,6 +22,7 @@ const (
 type CoinGeckoService interface {
 	chainkit.BlockchainBaseProvider
 	chainkit.RateFetcher
+	chainkit.HistoricalRateFetcher
 	chainkit.APIKeyValidator
 }
 
@@ -191,6 +192,98 @@ func (s *coingecko) GetExchangeRate(
 		Rate:      rate,
 		Timestamp: time.Now(),
 	}, nil
+}
+
+// GetHistoricalRates returns a time-series of exchange rates over the
+// requested window via CoinGecko's `/coins/{id}/market_chart/range` endpoint.
+//
+// CoinGecko's resolution policy (free public API):
+//   - windows ≤ 1 day:  ~5-minute granularity
+//   - 1–90 days:        ~hourly granularity
+//   - > 90 days:        daily granularity
+//
+// We don't override the resolution; the API auto-selects based on the
+// requested range. Output is normalised into []types.CoinRate ordered
+// chronologically (oldest first) — each point carries its own Timestamp,
+// so callers can render time-series without a separate timestamp array.
+func (s *coingecko) GetHistoricalRates(
+	ctx context.Context,
+	coin types.CoinTicker,
+	currency types.Currency,
+	since, until time.Time,
+) ([]types.CoinRate, error) {
+	if since.IsZero() || until.IsZero() || !since.Before(until) {
+		return nil, fmt.Errorf("coingecko: invalid window since=%v until=%v", since, until)
+	}
+
+	// CoinGecko expects UNIX seconds in `from`/`to`. The `market_chart/range`
+	// variant (vs the `days=` shortcut) lets us pin exact windows without
+	// boundary surprises around the day cutover.
+	//
+	// Two API quirks worth knowing:
+	//   1. The coin id segment is CASE-SENSITIVE on this endpoint (the
+	//      `/simple/price` endpoint with the `ids=` query param is not),
+	//      so we lowercase it. `CoingeckoString()` for BTC returns
+	//      "Bitcoin"; the API needs "bitcoin".
+	//   2. The endpoint REJECTS the default Go http client User-Agent
+	//      with a 401. `/simple/price` accepts it but this one is
+	//      stricter. We set an explicit, polite User-Agent identifying
+	//      chainkit so the request gets through.
+	url := fmt.Sprintf(
+		"%s/coins/%s/market_chart/range?vs_currency=%s&from=%d&to=%d",
+		s.coinGeckoBaseURL,
+		strings.ToLower(coin.CoingeckoString()),
+		strings.ToLower(currency.String()),
+		since.Unix(),
+		until.Unix(),
+	)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "chainkit-sdk/1 (+https://github.com/exapsy/chainkit)")
+	if s.apiKey != "" {
+		req.Header.Set("x-cg-pro-api-key", s.apiKey)
+	}
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+			return nil, fmt.Errorf("HTTP %d: %s: %w", resp.StatusCode, string(body), chainkit.ErrAuthFailure)
+		}
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
+	// Response shape: { "prices": [[ts_ms, price], ...], "market_caps": [...], "total_volumes": [...] }
+	var payload struct {
+		Prices [][]float64 `json:"prices"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return nil, fmt.Errorf("decode coingecko market_chart: %w", err)
+	}
+
+	out := make([]types.CoinRate, 0, len(payload.Prices))
+	for _, p := range payload.Prices {
+		if len(p) < 2 {
+			continue
+		}
+		out = append(out, types.CoinRate{
+			Coin:      coin,
+			Currency:  currency,
+			Rate:      big.NewFloat(p[1]),
+			Timestamp: time.UnixMilli(int64(p[0])).UTC(),
+			Source:    "Coingecko",
+		})
+	}
+
+	return out, nil
 }
 
 // CheckHealth performs a health check on the CoinGecko API
