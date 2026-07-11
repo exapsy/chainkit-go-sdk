@@ -1,10 +1,32 @@
 # chainkit
 
-A chain-agnostic, multi-provider blockchain client library for Go.
+Non-custodial Bitcoin payments for Go — plus the multi-provider RPC layer that powers them.
 
-chainkit gives you a single interface to multiple blockchain data providers with automatic fallback, circuit breaking, rate limiting, and provider selection strategies — so your application keeps working when any individual provider is down or rate-limited.
+chainkit is two things in one MIT-licensed module:
+
+1. **Payments** (`chainkit/payment`) — the execution layer for [chainkit cloud](https://chainkit.dev), a non-custodial Bitcoin payment processor. Fiat-priced invoices settle straight to the wallet behind your own xpub; chainkit never holds keys or coins. The SDK verifies HMAC-signed webhooks, builds BIP21 payment links, and talks to the cloud API.
+2. **RPC routing** (the root package) — a chain-agnostic, multi-provider blockchain client: one interface over N data providers with automatic fallback, circuit breaking, rate limiting, and per-call provider selection. No cloud account required; it runs entirely in your process.
 
 Bitcoin is the first supported chain. The architecture is designed to add Ethereum and other chains without breaking existing code.
+
+## Payments quick start
+
+```go
+import "github.com/exapsy/chainkit/payment"
+
+// On your webhook endpoint — verify the signature before trusting it.
+func handleWebhook(w http.ResponseWriter, r *http.Request) {
+    body, _ := io.ReadAll(r.Body)
+    sig := r.Header.Get("X-Chainkit-Signature")
+    if err := payment.VerifyWebhook(body, sig, os.Getenv("CHAINKIT_WEBHOOK_SECRET")); err != nil {
+        w.WriteHeader(http.StatusUnauthorized)
+        return
+    }
+    // settled ✓ — the sats are already in your wallet.
+}
+```
+
+Invoices are issued against the cloud API (`payment.NewCloudClient`) or any HTTP client — see the [payments API docs](https://chainkit.dev/docs/api/payments). Sign up at [chainkit.dev](https://chainkit.dev); funds settle on-chain to you, so there's nothing to withdraw and nothing we can freeze.
 
 ## Features
 
