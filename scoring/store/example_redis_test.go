@@ -12,9 +12,13 @@ import (
 
 // Example_redisStore demonstrates basic Redis store usage
 func Example_redisStore() {
-	// Create Redis store
+	// Create Redis store. The key prefix namespaces this example away from
+	// the other examples in this file — they all share the same live Redis,
+	// and keys written with a TTL (e.g. Example_redisStoreWithTTL's
+	// temp-provider) would otherwise leak into this example's
+	// GetSortedProviders across runs.
 	engine := scoring.NewEngine(
-		scoring.WithRedisStore("localhost:6379"),
+		scoring.WithRedisStore("localhost:6379", scoring.RedisKeyPrefix("example:basic:")),
 	)
 	defer engine.Stop()
 
@@ -234,8 +238,11 @@ func Example_redisStoreMultiTenancy() {
 
 // Example_redisStoreCustomTTL demonstrates per-score TTL
 func Example_redisStoreCustomTTL() {
+	// Namespaced away from the other examples: the temp-provider key this
+	// example writes carries a 30-minute TTL and would otherwise bleed
+	// into Example_redisStore's provider listing on the shared Redis.
 	engine := scoring.NewEngine(
-		scoring.WithRedisStore("localhost:6379"),
+		scoring.WithRedisStore("localhost:6379", scoring.RedisKeyPrefix("example:ttl:")),
 	)
 	defer engine.Stop()
 

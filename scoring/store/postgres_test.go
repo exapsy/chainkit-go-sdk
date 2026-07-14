@@ -787,10 +787,12 @@ func getPostgresConnString(t testing.TB) string {
 		t.Fatalf("failed to start Postgres container: %v", err)
 	}
 
-	// Store container for cleanup
-	t.Cleanup(func() {
-		_ = container.Terminate(ctx)
-	})
+	// NO t.Cleanup(Terminate) here — the container is shared by every test
+	// in the package via the cached conn string below, so terminating it
+	// when the FIRST test finishes leaves all later tests dialing a dead
+	// port ("connection refused", the exact CI failure this replaced).
+	// Cleanup is testcontainers' reaper (ryuk): it removes the container
+	// when the test process exits.
 
 	host, err := container.Host(ctx)
 	if err != nil {

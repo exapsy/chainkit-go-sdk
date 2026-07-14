@@ -3,7 +3,6 @@ package cloudagent
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -237,7 +236,7 @@ func (t *httpTransport) flushOnce(ctx context.Context) (bool, error) {
 	}
 	// Drain + close so the connection can be reused.
 	_, _ = io.Copy(io.Discard, resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	switch {
 	case resp.StatusCode >= 200 && resp.StatusCode < 300:
@@ -332,7 +331,3 @@ func nextBackoff(current, max time.Duration) time.Duration {
 
 // Compile-time check.
 var _ transport = (*httpTransport)(nil)
-
-// errStopped is returned by the loop's internal helpers when Stop has fired.
-// Surfaced for tests; the loop itself returns nil on stop.
-var errStopped = errors.New("cloudagent: stopped")

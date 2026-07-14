@@ -79,6 +79,23 @@ func (m *MetricsRecorder) shouldSample() bool {
 	return m.rand.Float64() < m.opts.SampleRate
 }
 
+// Stop flushes any buffered telemetry and shuts the background transport
+// down. Blocks until the pending buffer is drained or the transport's
+// drain deadline elapses, whichever comes first. Idempotent.
+//
+// Call this (usually via defer) before your program exits — the transport
+// batches events and flushes on an interval, so a short-lived program that
+// skips Stop can exit with its telemetry still sitting in the buffer:
+//
+//	rec := cloudagent.NewMetricsRecorder(cloudagent.Options{...})
+//	defer rec.Stop()
+//
+// Long-running services don't strictly need it (the interval flush ships
+// events continuously) but should still Stop on shutdown for a clean drain.
+func (m *MetricsRecorder) Stop() {
+	m.transport.Stop()
+}
+
 // transportRef exposes the internal transport for tests in this package.
 func (m *MetricsRecorder) transportRef() transport { return m.transport }
 

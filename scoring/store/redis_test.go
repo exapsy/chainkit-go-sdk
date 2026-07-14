@@ -784,10 +784,11 @@ func getRedisAddr(t testing.TB) string {
 		t.Fatalf("failed to start Redis container: %v", err)
 	}
 
-	// Store container for cleanup
-	t.Cleanup(func() {
-		_ = container.Terminate(ctx)
-	})
+	// NO t.Cleanup(Terminate) — the container is shared package-wide via
+	// the cached addr below; terminating it when the FIRST test finishes
+	// strands every later test on a dead port. The testcontainers reaper
+	// (ryuk) removes it when the test process exits. Same fix as the
+	// Postgres twin in postgres_test.go.
 
 	host, err := container.Host(ctx)
 	if err != nil {

@@ -133,7 +133,7 @@ func (r *RedisStore) SetScore(ctx context.Context, data *ProviderScoreData) erro
 	}
 
 	// Publish update event for watchers
-	go r.publishScoreUpdate(context.Background(), data)
+	go r.publishScoreUpdate(context.Background(), bytes)
 
 	return nil
 }
@@ -267,15 +267,14 @@ func (r *RedisStore) Ping(ctx context.Context) error {
 	return r.client.Ping(ctx).Err()
 }
 
-// publishScoreUpdate publishes a score update event to Redis pub/sub.
-// This is called asynchronously to avoid blocking the caller.
-func (r *RedisStore) publishScoreUpdate(ctx context.Context, data *ProviderScoreData) {
-	bytes, err := json.Marshal(data)
-	if err != nil {
-		return // Silently fail, don't block on pub/sub errors
-	}
-
-	r.client.Publish(ctx, r.eventChannel(), bytes)
+// publishScoreUpdate publishes an already-marshaled score payload to Redis
+// pub/sub. Called asynchronously to avoid blocking the caller — which is
+// exactly why it takes bytes, not *ProviderScoreData: the caller retains
+// ownership of the struct and may mutate it the moment Set returns, so
+// marshaling here would race that mutation (caught by -race in CI). The
+// Set path has the payload marshaled already; reuse it.
+func (r *RedisStore) publishScoreUpdate(ctx context.Context, payload []byte) {
+	r.client.Publish(ctx, r.eventChannel(), payload)
 }
 
 // Watchable interface implementation
@@ -334,7 +333,7 @@ func (r *RedisStore) SetScoreWithTTL(ctx context.Context, data *ProviderScoreDat
 	}
 
 	// Publish update event
-	go r.publishScoreUpdate(context.Background(), data)
+	go r.publishScoreUpdate(context.Background(), bytes)
 
 	return nil
 }

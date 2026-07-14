@@ -51,7 +51,7 @@ func newFakeServer(responses ...int) *fakeServer {
 
 func (f *fakeServer) handle(w http.ResponseWriter, r *http.Request) {
 	body, _ := io.ReadAll(r.Body)
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 	var b wireBatch
 	_ = json.Unmarshal(body, &b)
 	rec := recordedRequest{
