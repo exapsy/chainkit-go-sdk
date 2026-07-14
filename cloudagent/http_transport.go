@@ -37,6 +37,17 @@ type httpTransport struct {
 	buf      []Event // events waiting to be flushed; head=oldest, tail=newest
 	inflight []Event // batch currently being POSTed; restored to head of buf on retry
 
+	// terminalErr is set at most once, on a failure that retrying cannot
+	// heal — the cloud rejecting our API key (401/403). Once set: the
+	// buffer is discarded, Push drops straight into `dropped`, and every
+	// later flush is a no-op. Guarded by mu. Stop() surfaces it.
+	terminalErr error
+
+	// drainErr records what went wrong during the final Stop() drain
+	// (transient failure or deadline expiry with events still pending).
+	// Guarded by mu. Stop() surfaces it when no terminalErr exists.
+	drainErr error
+
 	// dropped is incremented on every overflow (drop-oldest) or expiry
 	// (EventTTL). Exposed for telemetry-of-telemetry; reads are atomic-only.
 	dropped atomic.Uint64
@@ -80,6 +91,13 @@ func newHTTPTransport(opts Options) *httpTransport {
 // or after the critical section.
 func (t *httpTransport) Push(e Event) {
 	t.mu.Lock()
+	if t.terminalErr != nil {
+		// Delivery is permanently dead (key rejected) — buffering would
+		// only burn memory on events that can never ship.
+		t.dropped.Add(1)
+		t.mu.Unlock()
+		return
+	}
 	if len(t.buf) >= t.opts.BufferSize {
 		// Drop oldest. Reslice rather than append-and-shift: O(1).
 		t.buf = t.buf[1:]
@@ -100,13 +118,55 @@ func (t *httpTransport) Push(e Event) {
 }
 
 // Stop terminates the loop. Best-effort flush of pending events bounded by
-// stopDrainDeadline. Idempotent.
-func (t *httpTransport) Stop() {
+// stopDrainDeadline. Idempotent. The returned error is the delivery
+// verdict: the sticky terminal error (API key rejected) when one exists,
+// else whatever went wrong during the final drain, else nil — nil means
+// every recorded event was handed to the cloud.
+func (t *httpTransport) Stop() error {
 	t.stopOnce.Do(func() {
 		close(t.stopCh)
 	})
 	// Wait for loop to exit. doneCh is closed by the loop after drain.
 	<-t.doneCh
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.terminalErr != nil {
+		return t.terminalErr
+	}
+	return t.drainErr
+}
+
+// isTerminal reports whether delivery is permanently dead.
+func (t *httpTransport) isTerminal() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.terminalErr != nil
+}
+
+// setTerminal marks delivery permanently failed, discards everything
+// buffered (counting it into dropped), and — exactly once — screams: one
+// Logger.Error record plus the OnError callback. Auth rejection is the
+// only current caller; retrying cannot heal it, and a quickstart user
+// staring at a quiet terminal deserves to know their key is wrong.
+func (t *httpTransport) setTerminal(err error) {
+	t.mu.Lock()
+	if t.terminalErr != nil {
+		t.mu.Unlock()
+		return
+	}
+	t.terminalErr = err
+	discarded := len(t.buf) + len(t.inflight)
+	t.buf = nil
+	t.inflight = nil
+	if discarded > 0 {
+		t.dropped.Add(uint64(discarded))
+	}
+	t.mu.Unlock()
+
+	t.opts.Logger.Error("chainkit telemetry disabled", "error", err.Error())
+	if t.opts.OnError != nil {
+		t.opts.OnError(err)
+	}
 }
 
 // Dropped returns the running count of dropped events (overflow + TTL expiry).
@@ -152,29 +212,58 @@ func (t *httpTransport) loop() {
 		case err == nil:
 			// nothing to flush; reset backoff so we don't sleep next time
 			backoff = 0
+		case t.isTerminal():
+			// setTerminal already logged + fired OnError; nothing to retry.
+			// Keep looping only to serve the stop signal.
+			backoff = 0
 		default:
 			backoff = nextBackoff(backoff, t.opts.MaxBackoff)
 			t.opts.Logger.Warn("cloudagent flush failed", "error", err.Error(), "next_backoff", backoff)
+			if t.opts.OnError != nil {
+				t.opts.OnError(err)
+			}
 		}
 	}
 }
 
 // drainAndExit attempts one or more flushes (no retries) until the buffer is
-// empty or stopDrainDeadline expires.
+// empty or stopDrainDeadline expires. Unlike the steady-state loop this is
+// the ONLY flush a short-lived program ever performs, so failures here must
+// not vanish: they land in drainErr (surfaced by Stop), the logger, and
+// OnError. Swallowing them is how a quickstart with a bad key used to print
+// success while zero events shipped.
 func (t *httpTransport) drainAndExit() {
 	ctx, cancel := context.WithTimeout(context.Background(), stopDrainDeadline)
 	defer cancel()
 	for {
 		t.mu.Lock()
-		empty := len(t.buf) == 0
+		pending := len(t.buf) + len(t.inflight)
 		t.mu.Unlock()
-		if empty {
+		if pending == 0 {
 			return
 		}
-		ok, _ := t.flushOnce(ctx)
-		if !ok {
+		ok, err := t.flushOnce(ctx)
+		if ok {
+			continue
+		}
+		if t.isTerminal() {
+			// setTerminal already logged, fired OnError, and emptied the
+			// buffer; Stop() will surface terminalErr.
 			return
 		}
+		if err == nil {
+			// Buffer emptied by a concurrent path — loop back to re-check.
+			continue
+		}
+		drainErr := fmt.Errorf("%d telemetry events undelivered at shutdown: %w", pending, err)
+		t.mu.Lock()
+		t.drainErr = drainErr
+		t.mu.Unlock()
+		t.opts.Logger.Warn("cloudagent shutdown drain failed", "error", drainErr.Error())
+		if t.opts.OnError != nil {
+			t.opts.OnError(drainErr)
+		}
+		return
 	}
 }
 
@@ -206,6 +295,9 @@ func (t *httpTransport) pruneStale(now time.Time) {
 // help. We count those as dropped via t.dropped so the customer can spot the
 // regression in their own telemetry.
 func (t *httpTransport) flushOnce(ctx context.Context) (bool, error) {
+	if t.isTerminal() {
+		return false, nil
+	}
 	t.takeInflight()
 	if len(t.inflight) == 0 {
 		return false, nil
@@ -246,9 +338,23 @@ func (t *httpTransport) flushOnce(ctx context.Context) (bool, error) {
 		// Retry-eligible: return events to the buffer.
 		t.returnInflightToHead()
 		return false, fmt.Errorf("retryable status %d", resp.StatusCode)
+	case resp.StatusCode == http.StatusUnauthorized, resp.StatusCode == http.StatusForbidden:
+		// The cloud rejected our credentials. Retrying cannot heal this —
+		// it is a configuration error, not a transient — so it becomes the
+		// transport's sticky terminal state: everything buffered is
+		// dropped, future flushes short-circuit, and setTerminal screams
+		// once (Logger.Error + OnError). Stop() will return this error.
+		dropped := len(t.inflight)
+		t.dropped.Add(uint64(dropped))
+		t.discardInflight()
+		err := fmt.Errorf(
+			"chainkit rejected the API key (status %d): telemetry will not be delivered — check cloudagent.Options.APIKey", resp.StatusCode)
+		t.setTerminal(err)
+		return false, err
 	default:
-		// 4xx other than 429: the events are poison or the key is revoked.
-		// Drop and surface an error so the loop logs once.
+		// Other 4xx: this batch is poison (malformed by the cloud's
+		// judgment). Drop it and surface an error so the loop logs once,
+		// but keep the transport alive — later batches may be fine.
 		dropped := len(t.inflight)
 		t.dropped.Add(uint64(dropped))
 		t.discardInflight()

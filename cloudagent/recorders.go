@@ -79,21 +79,27 @@ func (m *MetricsRecorder) shouldSample() bool {
 	return m.rand.Float64() < m.opts.SampleRate
 }
 
-// Stop flushes any buffered telemetry and shuts the background transport
-// down. Blocks until the pending buffer is drained or the transport's
-// drain deadline elapses, whichever comes first. Idempotent.
+// Stop flushes any buffered telemetry, shuts the background transport
+// down, and returns the delivery verdict. Blocks until the pending buffer
+// is drained or the transport's drain deadline elapses, whichever comes
+// first. Idempotent.
 //
-// Call this (usually via defer) before your program exits — the transport
-// batches events and flushes on an interval, so a short-lived program that
-// skips Stop can exit with its telemetry still sitting in the buffer:
+// The returned error is how a program learns its telemetry did NOT reach
+// chainkit: a rejected API key (401/403 — check Options.APIKey), or events
+// still undelivered when the drain deadline expired. nil means everything
+// recorded was handed to the cloud. Check it before exiting:
 //
 //	rec := cloudagent.NewMetricsRecorder(cloudagent.Options{...})
-//	defer rec.Stop()
+//	// ... run your calls ...
+//	if err := rec.Stop(); err != nil {
+//	    log.Fatalf("chainkit telemetry not delivered: %v", err)
+//	}
 //
-// Long-running services don't strictly need it (the interval flush ships
-// events continuously) but should still Stop on shutdown for a clean drain.
-func (m *MetricsRecorder) Stop() {
-	m.transport.Stop()
+// `defer rec.Stop()` still compiles (the error is discarded) and remains
+// fine for long-running services, which ship continuously on the flush
+// interval and can also observe failures via Options.OnError.
+func (m *MetricsRecorder) Stop() error {
+	return m.transport.Stop()
 }
 
 // transportRef exposes the internal transport for tests in this package.

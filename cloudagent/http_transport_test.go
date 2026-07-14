@@ -159,7 +159,7 @@ func TestHTTPTransport_FlushOnInterval(t *testing.T) {
 	defer srv.Close()
 
 	tr := newHTTPTransport(buildTestOptions(srv).withDefaults())
-	defer tr.Stop()
+	defer func() { _ = tr.Stop() }()
 
 	// Push fewer than BatchSize so only the interval ticker triggers.
 	pushN(tr, 3)
@@ -187,7 +187,7 @@ func TestHTTPTransport_FlushOnBatchSize(t *testing.T) {
 	opts := buildTestOptions(srv)
 	opts.FlushInterval = 10 * time.Second // effectively disable the ticker
 	tr := newHTTPTransport(opts.withDefaults())
-	defer tr.Stop()
+	defer func() { _ = tr.Stop() }()
 
 	// Push exactly BatchSize — should trigger the signal-based flush.
 	pushN(tr, opts.BatchSize)
@@ -208,7 +208,7 @@ func TestHTTPTransport_DropOldestOnOverflow(t *testing.T) {
 	opts.BatchSize = 100 // do not trigger size flush
 	opts.FlushInterval = 10 * time.Second
 	tr := newHTTPTransport(opts.withDefaults())
-	defer tr.Stop()
+	defer func() { _ = tr.Stop() }()
 
 	pushN(tr, 10) // 5 over BufferSize → 5 dropped
 	if d := tr.Dropped(); d != 5 {
@@ -226,7 +226,7 @@ func TestHTTPTransport_RetriesOn5xx(t *testing.T) {
 	opts.FlushInterval = 30 * time.Millisecond
 	opts.MaxBackoff = 100 * time.Millisecond
 	tr := newHTTPTransport(opts.withDefaults())
-	defer tr.Stop()
+	defer func() { _ = tr.Stop() }()
 
 	pushN(tr, 2)
 
@@ -248,7 +248,7 @@ func TestHTTPTransport_4xxDropsWithoutRetry(t *testing.T) {
 	opts := buildTestOptions(srv)
 	opts.FlushInterval = 30 * time.Millisecond
 	tr := newHTTPTransport(opts.withDefaults())
-	defer tr.Stop()
+	defer func() { _ = tr.Stop() }()
 
 	pushN(tr, 3)
 	srv.waitForRequests(t, 1, time.Second)
@@ -273,7 +273,7 @@ func TestHTTPTransport_StopDrainsPending(t *testing.T) {
 
 	pushN(tr, 3)
 	// Stop should drain even without the ticker firing.
-	tr.Stop()
+	_ = tr.Stop()
 
 	if got := len(srv.seen()); got != 1 {
 		t.Fatalf("Stop did not drain: got %d requests", got)
@@ -302,7 +302,7 @@ func TestHTTPTransport_PushNeverBlocksUnderOverflow(t *testing.T) {
 		EventTTL:      time.Hour,
 	}.withDefaults()
 	tr := newHTTPTransport(opts)
-	defer tr.Stop()
+	defer func() { _ = tr.Stop() }()
 
 	// Push 5x the buffer — every Push must return promptly even though the
 	// server is hung.
@@ -325,7 +325,7 @@ func TestHTTPTransport_PruneStaleEvents(t *testing.T) {
 	opts.EventTTL = 20 * time.Millisecond
 	opts.FlushInterval = 200 * time.Millisecond // delay the first flush
 	tr := newHTTPTransport(opts.withDefaults())
-	defer tr.Stop()
+	defer func() { _ = tr.Stop() }()
 
 	// Push events with a CapturedAt in the past so the prune step removes
 	// them immediately.
@@ -352,7 +352,7 @@ func TestHTTPTransport_ConcurrentPushes(t *testing.T) {
 	defer srv.Close()
 
 	tr := newHTTPTransport(buildTestOptions(srv).withDefaults())
-	defer tr.Stop()
+	defer func() { _ = tr.Stop() }()
 
 	const goroutines = 8
 	const perGoroutine = 50
@@ -380,7 +380,7 @@ func TestHTTPTransport_ConcurrentPushes(t *testing.T) {
 		t.Fatal("a goroutine panicked")
 	}
 	// Stop to drain.
-	tr.Stop()
+	_ = tr.Stop()
 
 	var delivered int
 	for _, r := range srv.seen() {

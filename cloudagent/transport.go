@@ -66,7 +66,9 @@ const (
 // SDK's hot path.
 type transport interface {
 	Push(Event)
-	Stop()
+	// Stop drains and shuts down; the error is the delivery verdict
+	// (nil = everything handed to the cloud).
+	Stop() error
 }
 
 // noopTransport stores events in memory and exposes them for tests. It applies no
@@ -86,7 +88,7 @@ func (t *noopTransport) Push(e Event) {
 	t.mu.Unlock()
 }
 
-func (t *noopTransport) Stop() {}
+func (t *noopTransport) Stop() error { return nil }
 
 // snapshot returns a copy of the buffered events. Tests use this to assert that
 // the SDK forwarded the expected events into the agent.

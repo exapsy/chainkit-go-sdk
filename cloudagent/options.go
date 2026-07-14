@@ -83,6 +83,17 @@ type Options struct {
 
 	// Logger is the optional structured logger. When nil, slog.Default is used.
 	Logger *slog.Logger
+
+	// OnError, when non-nil, is invoked for every telemetry-delivery
+	// failure: each failed flush (with backoff between retries), the
+	// terminal API-key rejection (once), and a failed shutdown drain.
+	// It is called from the transport's background goroutine — the
+	// callback must be fast and non-blocking, and must not call back
+	// into the recorder. Delivery failures never affect the host app's
+	// blockchain calls; this hook exists purely so an application can
+	// alert on "my telemetry is not arriving" programmatically instead
+	// of reading logs.
+	OnError func(error)
 }
 
 // withDefaults returns a copy of opts with unset fields populated from the
