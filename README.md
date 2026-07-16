@@ -9,6 +9,8 @@ chainkit is two things in one MIT-licensed module:
 
 Bitcoin is the first supported chain. The architecture is designed to add Ethereum and other chains without breaking existing code.
 
+**Links:** [Docs](https://chainkit.dev/docs) · [Quickstart](https://chainkit.dev/docs/quickstart) · [Pricing](https://chainkit.dev/pricing) · [AI/LLM overview (`llms.txt`)](https://chainkit.dev/llms.txt)
+
 ## Payments quick start
 
 ```go
