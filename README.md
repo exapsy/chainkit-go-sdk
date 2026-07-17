@@ -223,18 +223,22 @@ coingecko := providers.NewCoingecko()
 ## Payment utilities
 
 ```go
-import "github.com/exapsy/chainkit/payment"
+import (
+    "math/big"
+
+    "github.com/exapsy/chainkit/payment"
+)
 
 // Build a BIP-21 bitcoin: payment URI
-link := payment.BuildPaymentLink(payment.BuildPaymentLinkOptions{
-    Address: "bc1q...",
-    Amount:  1500000, // satoshis
-    Coin:    payment.CoinBTC,
+link, err := payment.BuildPaymentLink(payment.BuildPaymentLinkOptions{
+    WalletAddress: "bc1q...",
+    Amount:        big.NewInt(1500000), // satoshis
+    Coin:          payment.BTC,
 })
-// "bitcoin:bc1q...?amount=0.015"
+// link == "bitcoin:bc1q...?amount=0.015"
 
 // Convert satoshis to BTC
-btc := payment.ConvertSatoshisToBitcoin(1500000) // 0.015
+btc, err := payment.ConvertSatoshisToBitcoin(big.NewInt(1500000)) // 0.015
 ```
 
 ## HD wallet utilities
