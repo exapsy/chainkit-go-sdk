@@ -418,14 +418,21 @@ func (m *mempoolProvider) GetUTXOs(ctx context.Context, address string) ([]types
 		return nil, &types.RequestError{Err: err, Message: "failed to decode response"}
 	}
 
+	// Fetch the chain tip once so confirmations reflect the real depth of
+	// each UTXO (tip - blockHeight + 1), not a fixed 1. Fetched outside the
+	// loop to avoid one request per UTXO. If it fails, fall back to marking
+	// confirmed UTXOs as 1 confirmation rather than failing the call.
+	tipHeight, tipErr := m.getCurrentBlockHeight(ctx)
+
 	utxos := make([]types.UTXO, 0, len(apiUTXOs))
 	for _, apiUtxo := range apiUTXOs {
-		// Calculate confirmations based on current tip height if needed
 		confirmations := int64(0)
 		if apiUtxo.Status.Confirmed && apiUtxo.Status.BlockHeight > 0 {
-			// You might want to fetch the current block height for accurate confirmations
-			// For now, just mark as confirmed
-			confirmations = 1
+			if tipErr == nil && tipHeight > 0 {
+				confirmations = tipHeight - int64(apiUtxo.Status.BlockHeight) + 1
+			} else {
+				confirmations = 1
+			}
 		}
 
 		utxo := types.UTXO{
