@@ -30,10 +30,10 @@ type Event struct {
 type ScoreEvent struct {
 	Provider       string
 	Kind           ScoreEventKind
-	EventType      string  // for Kind == ScoreEventKindEvent
-	ScoreType      string  // for Kind == ScoreEventKindScoreChange / ScoreEventKindEffective
-	Operation      string  // for Kind == ScoreEventKindLatency
-	Store          string  // for Kind == ScoreEventKindStoreOp / ScoreEventKindCacheHit
+	EventType      string // for Kind == ScoreEventKindEvent
+	ScoreType      string // for Kind == ScoreEventKindScoreChange / ScoreEventKindEffective
+	Operation      string // for Kind == ScoreEventKindLatency
+	Store          string // for Kind == ScoreEventKindStoreOp / ScoreEventKindCacheHit
 	OldValue       float64
 	NewValue       float64
 	Score          float64

@@ -9,18 +9,18 @@ import (
 
 // MixedProvidersBuilder implements the builder pattern for creating MixedProviders
 type MixedProvidersBuilder struct {
-	addressGenerators *providerManager
-	addressValidators *providerManager
-	feeEstimators     *providerManager
-	feeRecommenders   *providerManager
-	txBroadcasters    *providerManager
-	utxoFetchers      *providerManager
-	txAssemblers      *providerManager
-	txSizers          *providerManager
-	txSigners         *providerManager
-	txStatusFetchers  *providerManager
-	balanceFetchers   *providerManager
-	rateFetchers      *providerManager
+	addressGenerators      *providerManager
+	addressValidators      *providerManager
+	feeEstimators          *providerManager
+	feeRecommenders        *providerManager
+	txBroadcasters         *providerManager
+	utxoFetchers           *providerManager
+	txAssemblers           *providerManager
+	txSizers               *providerManager
+	txSigners              *providerManager
+	txStatusFetchers       *providerManager
+	balanceFetchers        *providerManager
+	rateFetchers           *providerManager
 	historicalRateFetchers *providerManager
 
 	chainConfigs    map[string]ChainConfig
@@ -31,21 +31,21 @@ type MixedProvidersBuilder struct {
 // NewMixedProvidersBuilder creates a new builder with default configurations
 func NewMixedProvidersBuilder() *MixedProvidersBuilder {
 	return &MixedProvidersBuilder{
-		addressGenerators: newProviderManager(DefaultChainConfig(ProviderChainAddressGenerators)),
-		addressValidators: newProviderManager(DefaultChainConfig(ProviderChainAddressValidators)),
-		feeEstimators:     newProviderManager(DefaultChainConfig(ProviderChainFeeEstimators)),
-		feeRecommenders:   newProviderManager(DefaultChainConfig(ProviderChainFeeRecommenders)),
-		txBroadcasters:    newProviderManager(DefaultChainConfig(ProviderChainTxBroadcasters)),
-		utxoFetchers:      newProviderManager(DefaultChainConfig(ProviderChainUTXOFetchers)),
-		txAssemblers:      newProviderManager(DefaultChainConfig(ProviderChainTxAssemblers)),
-		txSizers:          newProviderManager(DefaultChainConfig(ProviderChainTxSizers)),
-		txSigners:         newProviderManager(DefaultChainConfig(ProviderChainTxSigners)),
-		txStatusFetchers:  newProviderManager(DefaultChainConfig(ProviderChainTxStatusFetchers)),
-		balanceFetchers:   newProviderManager(DefaultChainConfig(ProviderChainBalanceFetchers)),
-		rateFetchers:      newProviderManager(DefaultChainConfig(ProviderChainRateFetchers)),
+		addressGenerators:      newProviderManager(DefaultChainConfig(ProviderChainAddressGenerators)),
+		addressValidators:      newProviderManager(DefaultChainConfig(ProviderChainAddressValidators)),
+		feeEstimators:          newProviderManager(DefaultChainConfig(ProviderChainFeeEstimators)),
+		feeRecommenders:        newProviderManager(DefaultChainConfig(ProviderChainFeeRecommenders)),
+		txBroadcasters:         newProviderManager(DefaultChainConfig(ProviderChainTxBroadcasters)),
+		utxoFetchers:           newProviderManager(DefaultChainConfig(ProviderChainUTXOFetchers)),
+		txAssemblers:           newProviderManager(DefaultChainConfig(ProviderChainTxAssemblers)),
+		txSizers:               newProviderManager(DefaultChainConfig(ProviderChainTxSizers)),
+		txSigners:              newProviderManager(DefaultChainConfig(ProviderChainTxSigners)),
+		txStatusFetchers:       newProviderManager(DefaultChainConfig(ProviderChainTxStatusFetchers)),
+		balanceFetchers:        newProviderManager(DefaultChainConfig(ProviderChainBalanceFetchers)),
+		rateFetchers:           newProviderManager(DefaultChainConfig(ProviderChainRateFetchers)),
 		historicalRateFetchers: newProviderManager(DefaultChainConfig(ProviderChainHistoricalRateFetchers)),
-		chainConfigs:      make(map[string]ChainConfig),
-		metricsRecorder:   &NoOpMetricsRecorder{}, // Default to no-op metrics
+		chainConfigs:           make(map[string]ChainConfig),
+		metricsRecorder:        &NoOpMetricsRecorder{}, // Default to no-op metrics
 	}
 }
 
@@ -513,20 +513,20 @@ func (b *MixedProvidersBuilder) Build() BlockchainProvider {
 	}
 
 	return &MixedProviders{
-		addressGenerators: b.addressGenerators,
-		addressValidators: b.addressValidators,
-		feeRecommenders:   b.feeRecommenders,
-		feeEstimators:     b.feeEstimators,
-		txBroadcasters:    b.txBroadcasters,
-		txAssemblers:      b.txAssemblers,
-		txSizers:          b.txSizers,
-		txSigners:         b.txSigners,
-		txStatusFetchers:  b.txStatusFetchers,
-		utxoFetchers:      b.utxoFetchers,
-		balanceFetchers:   b.balanceFetchers,
-		rateFetchers:      b.rateFetchers,
+		addressGenerators:      b.addressGenerators,
+		addressValidators:      b.addressValidators,
+		feeRecommenders:        b.feeRecommenders,
+		feeEstimators:          b.feeEstimators,
+		txBroadcasters:         b.txBroadcasters,
+		txAssemblers:           b.txAssemblers,
+		txSizers:               b.txSizers,
+		txSigners:              b.txSigners,
+		txStatusFetchers:       b.txStatusFetchers,
+		utxoFetchers:           b.utxoFetchers,
+		balanceFetchers:        b.balanceFetchers,
+		rateFetchers:           b.rateFetchers,
 		historicalRateFetchers: b.historicalRateFetchers,
-		metricsRecorder:   b.metricsRecorder,
-		scoringEngine:     b.scoringEngine,
+		metricsRecorder:        b.metricsRecorder,
+		scoringEngine:          b.scoringEngine,
 	}
 }

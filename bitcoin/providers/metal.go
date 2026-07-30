@@ -383,7 +383,7 @@ func (p *metal) CheckHealth(ctx context.Context) chainkit.HealthStatus {
 	responseTimeUs := responseDuration.Microseconds()
 
 	return chainkit.HealthStatus{
-		Status: chainkit.HealthLevelHealthy,
+		Status:         chainkit.HealthLevelHealthy,
 		ResponseTimeMs: responseTimeMs,
 		ResponseTimeUs: responseTimeUs,
 		HTTPStatus:     0, // Not applicable for local provider

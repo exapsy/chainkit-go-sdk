@@ -13,8 +13,8 @@ import (
 // random suffix — the same shape ULID provides, without the package weight.
 
 var (
-	idMu      sync.Mutex
-	lastMS    uint64
+	idMu        sync.Mutex
+	lastMS      uint64
 	lastEntropy [10]byte
 )
 

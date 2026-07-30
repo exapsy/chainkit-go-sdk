@@ -10,21 +10,21 @@ import (
 
 // MixedProviders implements BlockchainProvider using multiple provider chains with fallback support
 type MixedProviders struct {
-	addressGenerators *providerManager
-	addressValidators *providerManager
-	feeEstimators     *providerManager
-	feeRecommenders   *providerManager
-	txBroadcasters    *providerManager
-	utxoFetchers      *providerManager
-	txAssemblers      *providerManager
-	txSizers          *providerManager
-	txSigners         *providerManager
-	txStatusFetchers  *providerManager
-	balanceFetchers   *providerManager
-	rateFetchers      *providerManager
+	addressGenerators      *providerManager
+	addressValidators      *providerManager
+	feeEstimators          *providerManager
+	feeRecommenders        *providerManager
+	txBroadcasters         *providerManager
+	utxoFetchers           *providerManager
+	txAssemblers           *providerManager
+	txSizers               *providerManager
+	txSigners              *providerManager
+	txStatusFetchers       *providerManager
+	balanceFetchers        *providerManager
+	rateFetchers           *providerManager
 	historicalRateFetchers *providerManager
-	metricsRecorder   MetricsRecorder
-	scoringEngine     *scoring.Engine
+	metricsRecorder        MetricsRecorder
+	scoringEngine          *scoring.Engine
 }
 
 func (m *MixedProviders) Name() string {

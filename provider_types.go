@@ -5,18 +5,18 @@ type ProviderChainType string
 
 // Provider chain type constants for type-safe provider identification
 const (
-	ProviderChainAddressGenerators ProviderChainType = "AddressGenerators"
-	ProviderChainAddressValidators ProviderChainType = "AddressValidators"
-	ProviderChainFeeEstimators     ProviderChainType = "FeeEstimators"   // FeeEstimator interface - calculates fee amounts
-	ProviderChainFeeRecommenders   ProviderChainType = "FeeRecommenders" // FeeRecommender interface - fetches fee recommendations
-	ProviderChainTxBroadcasters    ProviderChainType = "TxBroadcasters"
-	ProviderChainUTXOFetchers      ProviderChainType = "UTXOFetchers"
-	ProviderChainTxAssemblers      ProviderChainType = "TxAssemblers"
-	ProviderChainTxSizers          ProviderChainType = "TxSizers"
-	ProviderChainTxSigners         ProviderChainType = "TxSigners"
-	ProviderChainTxStatusFetchers  ProviderChainType = "TxStatusFetchers"
-	ProviderChainBalanceFetchers   ProviderChainType = "BalanceFetchers"
-	ProviderChainRateFetchers      ProviderChainType = "RateFetchers"
+	ProviderChainAddressGenerators      ProviderChainType = "AddressGenerators"
+	ProviderChainAddressValidators      ProviderChainType = "AddressValidators"
+	ProviderChainFeeEstimators          ProviderChainType = "FeeEstimators"   // FeeEstimator interface - calculates fee amounts
+	ProviderChainFeeRecommenders        ProviderChainType = "FeeRecommenders" // FeeRecommender interface - fetches fee recommendations
+	ProviderChainTxBroadcasters         ProviderChainType = "TxBroadcasters"
+	ProviderChainUTXOFetchers           ProviderChainType = "UTXOFetchers"
+	ProviderChainTxAssemblers           ProviderChainType = "TxAssemblers"
+	ProviderChainTxSizers               ProviderChainType = "TxSizers"
+	ProviderChainTxSigners              ProviderChainType = "TxSigners"
+	ProviderChainTxStatusFetchers       ProviderChainType = "TxStatusFetchers"
+	ProviderChainBalanceFetchers        ProviderChainType = "BalanceFetchers"
+	ProviderChainRateFetchers           ProviderChainType = "RateFetchers"
 	ProviderChainHistoricalRateFetchers ProviderChainType = "HistoricalRateFetchers"
 )
 

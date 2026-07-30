@@ -31,7 +31,7 @@ type fakeServer struct {
 	*httptest.Server
 
 	mu        sync.Mutex
-	responses []int     // status codes to return, in order; trailing reuses last value
+	responses []int // status codes to return, in order; trailing reuses last value
 	requests  []recordedRequest
 
 	requestCh chan recordedRequest // buffered so handlers never block

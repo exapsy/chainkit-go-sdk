@@ -75,7 +75,9 @@ func noopFetch(_ context.Context, etag string) (fetchResult, error) {
 // 304 short-circuits.
 //
 // Wire shape (matches services/config.Snapshot in chainkit-cloud-srv):
-//   { "version": int, "etag": "\"...\"", "config": { ... } }
+//
+//	{ "version": int, "etag": "\"...\"", "config": { ... } }
+//
 // where "config" is the JSON form of chainkit.ConfigSnapshot.
 func makeFetcher(opts Options) fetchFn {
 	if opts.Endpoint == "" {
@@ -118,9 +120,9 @@ func makeFetcher(opts Options) fetchFn {
 		}
 
 		var envelope struct {
-			Version int                      `json:"version"`
-			ETag    string                   `json:"etag"`
-			Config  chainkit.ConfigSnapshot  `json:"config"`
+			Version int                     `json:"version"`
+			ETag    string                  `json:"etag"`
+			Config  chainkit.ConfigSnapshot `json:"config"`
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
 			return fetchResult{}, fmt.Errorf("decode config: %w", err)

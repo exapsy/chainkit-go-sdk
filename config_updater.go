@@ -126,18 +126,18 @@ func scoringWeightsToOptions(w ScoringWeights) []scoring.ScoringOption {
 // providers has no manager to address.
 func (m *MixedProviders) managers() map[ProviderChainType]*providerManager {
 	return map[ProviderChainType]*providerManager{
-		ProviderChainAddressGenerators: m.addressGenerators,
-		ProviderChainAddressValidators: m.addressValidators,
-		ProviderChainFeeEstimators:     m.feeEstimators,
-		ProviderChainFeeRecommenders:   m.feeRecommenders,
-		ProviderChainTxBroadcasters:    m.txBroadcasters,
-		ProviderChainUTXOFetchers:      m.utxoFetchers,
-		ProviderChainTxAssemblers:      m.txAssemblers,
-		ProviderChainTxSizers:          m.txSizers,
-		ProviderChainTxSigners:         m.txSigners,
-		ProviderChainTxStatusFetchers:  m.txStatusFetchers,
-		ProviderChainBalanceFetchers:   m.balanceFetchers,
-		ProviderChainRateFetchers:      m.rateFetchers,
+		ProviderChainAddressGenerators:      m.addressGenerators,
+		ProviderChainAddressValidators:      m.addressValidators,
+		ProviderChainFeeEstimators:          m.feeEstimators,
+		ProviderChainFeeRecommenders:        m.feeRecommenders,
+		ProviderChainTxBroadcasters:         m.txBroadcasters,
+		ProviderChainUTXOFetchers:           m.utxoFetchers,
+		ProviderChainTxAssemblers:           m.txAssemblers,
+		ProviderChainTxSizers:               m.txSizers,
+		ProviderChainTxSigners:              m.txSigners,
+		ProviderChainTxStatusFetchers:       m.txStatusFetchers,
+		ProviderChainBalanceFetchers:        m.balanceFetchers,
+		ProviderChainRateFetchers:           m.rateFetchers,
 		ProviderChainHistoricalRateFetchers: m.historicalRateFetchers,
 	}
 }

@@ -159,7 +159,7 @@ type errorStore struct {
 	err error
 }
 
-func (e *errorStore) Name() string                                                    { return "error" }
+func (e *errorStore) Name() string { return "error" }
 func (e *errorStore) GetScore(_ context.Context, _ string) (*store.ProviderScoreData, error) {
 	return nil, e.err
 }
@@ -177,5 +177,5 @@ func (e *errorStore) GetLatencyStats(_ context.Context) (*store.LatencyStatsData
 func (e *errorStore) SetLatencyStats(_ context.Context, _ *store.LatencyStatsData) error {
 	return e.err
 }
-func (e *errorStore) Close() error                    { return e.err }
-func (e *errorStore) Ping(_ context.Context) error   { return e.err }
+func (e *errorStore) Close() error                 { return e.err }
+func (e *errorStore) Ping(_ context.Context) error { return e.err }

@@ -17,19 +17,19 @@ import (
 const schemaV1 = "chainkit.ingest.v1"
 
 type wireBatch struct {
-	Schema  string          `json:"schema"`
-	Agent   string          `json:"agent"`
-	BatchID string          `json:"batch_id"`
-	SentAt  time.Time       `json:"sent_at"`
-	Events  []wireEnvelope  `json:"events"`
+	Schema  string         `json:"schema"`
+	Agent   string         `json:"agent"`
+	BatchID string         `json:"batch_id"`
+	SentAt  time.Time      `json:"sent_at"`
+	Events  []wireEnvelope `json:"events"`
 }
 
 type wireEnvelope struct {
-	ID    string         `json:"id"`
-	T     time.Time      `json:"t"`
-	Kind  string         `json:"kind"` // "req" | "score"
-	Req   *wireRequest   `json:"req,omitempty"`
-	Score *wireScore     `json:"score,omitempty"`
+	ID    string       `json:"id"`
+	T     time.Time    `json:"t"`
+	Kind  string       `json:"kind"` // "req" | "score"
+	Req   *wireRequest `json:"req,omitempty"`
+	Score *wireScore   `json:"score,omitempty"`
 }
 
 type wireRequest struct {
@@ -44,21 +44,21 @@ type wireRequest struct {
 }
 
 type wireScore struct {
-	Type           string         `json:"type"`
-	Provider       string         `json:"provider"`
-	EventType      string         `json:"event_type,omitempty"`
-	ScoreType      string         `json:"score_type,omitempty"`
-	Operation      string         `json:"operation,omitempty"`
-	Store          string         `json:"store,omitempty"`
-	OldValue       float64        `json:"old_value,omitempty"`
-	NewValue       float64        `json:"new_value,omitempty"`
-	Score          float64        `json:"score_after,omitempty"`
-	RTMS           int32          `json:"rt_ms,omitempty"`
-	Success        bool           `json:"success,omitempty"`
-	CacheHit       bool           `json:"cache_hit,omitempty"`
-	Rank           int            `json:"rank,omitempty"`
-	TotalProviders int            `json:"total_providers,omitempty"`
-	StoreErr       string         `json:"store_err,omitempty"`
+	Type           string  `json:"type"`
+	Provider       string  `json:"provider"`
+	EventType      string  `json:"event_type,omitempty"`
+	ScoreType      string  `json:"score_type,omitempty"`
+	Operation      string  `json:"operation,omitempty"`
+	Store          string  `json:"store,omitempty"`
+	OldValue       float64 `json:"old_value,omitempty"`
+	NewValue       float64 `json:"new_value,omitempty"`
+	Score          float64 `json:"score_after,omitempty"`
+	RTMS           int32   `json:"rt_ms,omitempty"`
+	Success        bool    `json:"success,omitempty"`
+	CacheHit       bool    `json:"cache_hit,omitempty"`
+	Rank           int     `json:"rank,omitempty"`
+	TotalProviders int     `json:"total_providers,omitempty"`
+	StoreErr       string  `json:"store_err,omitempty"`
 }
 
 // buildBatch turns a slice of in-memory Events into the JSON-encoded wire
